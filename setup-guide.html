@@ -1,0 +1,818 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>VoxLog 安裝與使用說明</title>
+  <style>
+    :root {
+      --bg: #1a1a2e;
+      --surface: #16213e;
+      --card: #0f3460;
+      --accent: #4a9eff;
+      --accent2: #00d4aa;
+      --warn: #f39c12;
+      --danger: #e74c3c;
+      --success: #27ae60;
+      --text: #e8e8f0;
+      --subtext: #8888aa;
+      --border: #2a2a4a;
+      --code-bg: #0d1117;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: "Microsoft JhengHei", "PingFang TC", "Noto Sans TC", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.75;
+      padding: 0 0 80px;
+    }
+
+    /* ── Header ── */
+    header {
+      background: linear-gradient(135deg, #0f3460 0%, #1a1a2e 60%);
+      padding: 56px 40px 48px;
+      border-bottom: 1px solid var(--border);
+    }
+    header h1 {
+      font-size: 2.6rem;
+      font-weight: 700;
+      letter-spacing: 2px;
+      color: var(--accent);
+      margin-bottom: 8px;
+    }
+    header .tagline {
+      color: var(--subtext);
+      font-size: 1rem;
+    }
+    header .badge-row {
+      margin-top: 18px;
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .badge {
+      display: inline-block;
+      padding: 3px 12px;
+      border-radius: 20px;
+      font-size: 0.78rem;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+    }
+    .badge-blue  { background: #1a4080; color: #7db8ff; border: 1px solid #2a5aaa; }
+    .badge-green { background: #1a4030; color: #5dcc90; border: 1px solid #2a6040; }
+    .badge-warn  { background: #3a2800; color: #f0b840; border: 1px solid #5a4000; }
+
+    /* ── Layout ── */
+    .container {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 0 24px;
+    }
+
+    /* ── TOC ── */
+    .toc {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 24px 28px;
+      margin: 40px 0 0;
+    }
+    .toc h2 {
+      font-size: 0.85rem;
+      text-transform: uppercase;
+      letter-spacing: 1.5px;
+      color: var(--subtext);
+      margin-bottom: 14px;
+    }
+    .toc ol {
+      padding-left: 20px;
+    }
+    .toc li {
+      margin: 5px 0;
+    }
+    .toc a {
+      color: var(--accent);
+      text-decoration: none;
+      font-size: 0.95rem;
+    }
+    .toc a:hover { text-decoration: underline; }
+
+    /* ── Sections ── */
+    section {
+      margin-top: 52px;
+    }
+    .section-title {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 20px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid var(--border);
+    }
+    .section-num {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      background: var(--accent);
+      color: #fff;
+      font-size: 0.85rem;
+      font-weight: 700;
+      flex-shrink: 0;
+    }
+    .section-title h2 {
+      font-size: 1.35rem;
+      font-weight: 700;
+    }
+
+    /* ── Cards ── */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 22px 26px;
+      margin-bottom: 16px;
+    }
+    .card-title {
+      font-size: 1rem;
+      font-weight: 700;
+      margin-bottom: 6px;
+    }
+    .card p {
+      color: var(--subtext);
+      font-size: 0.9rem;
+      margin-top: 4px;
+    }
+
+    /* ── Steps ── */
+    .steps { counter-reset: step; }
+    .step {
+      display: flex;
+      gap: 18px;
+      margin-bottom: 28px;
+    }
+    .step-num {
+      counter-increment: step;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      background: var(--card);
+      border: 2px solid var(--accent);
+      color: var(--accent);
+      font-size: 0.8rem;
+      font-weight: 700;
+      flex-shrink: 0;
+      margin-top: 3px;
+    }
+    .step-body { flex: 1; }
+    .step-body h3 {
+      font-size: 0.98rem;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+    .step-body p {
+      color: var(--subtext);
+      font-size: 0.88rem;
+      margin-bottom: 8px;
+    }
+
+    /* ── Code blocks ── */
+    pre {
+      background: var(--code-bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 14px 18px;
+      overflow-x: auto;
+      margin: 10px 0;
+    }
+    code {
+      font-family: "Cascadia Code", "Fira Code", "Consolas", monospace;
+      font-size: 0.85rem;
+      color: #c9d1d9;
+    }
+    pre code { color: #c9d1d9; }
+
+    /* inline code */
+    p code, li code, td code {
+      background: var(--code-bg);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 1px 6px;
+      font-size: 0.82em;
+      color: var(--accent2);
+    }
+
+    /* ── Tables ── */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 12px 0;
+      font-size: 0.88rem;
+    }
+    th {
+      background: var(--card);
+      color: var(--accent);
+      padding: 10px 14px;
+      text-align: left;
+      font-weight: 600;
+    }
+    td {
+      padding: 9px 14px;
+      border-bottom: 1px solid var(--border);
+      color: var(--text);
+    }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: rgba(74,158,255,0.05); }
+
+    /* ── Callouts ── */
+    .callout {
+      border-radius: 10px;
+      padding: 14px 18px;
+      margin: 14px 0;
+      font-size: 0.88rem;
+      display: flex;
+      gap: 12px;
+      align-items: flex-start;
+    }
+    .callout-icon { font-size: 1.1rem; flex-shrink: 0; margin-top: 1px; }
+    .callout-warn  { background: #2a1a00; border: 1px solid #5a3a00; color: #f0c070; }
+    .callout-tip   { background: #001a2a; border: 1px solid #005a4a; color: #70dfc0; }
+    .callout-info  { background: #001530; border: 1px solid #00306a; color: #70afff; }
+
+    /* ── Engine cards ── */
+    .engine-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 14px;
+      margin-top: 14px;
+    }
+    .engine-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 18px 20px;
+    }
+    .engine-card.local { border-color: var(--success); }
+    .engine-card.cloud { border-color: #2a5aaa; }
+    .engine-name {
+      font-size: 1.05rem;
+      font-weight: 700;
+      margin-bottom: 6px;
+    }
+    .engine-card.local .engine-name { color: var(--success); }
+    .engine-card.cloud .engine-name { color: var(--accent); }
+    .engine-tag {
+      display: inline-block;
+      font-size: 0.72rem;
+      font-weight: 600;
+      padding: 2px 8px;
+      border-radius: 10px;
+      margin-bottom: 10px;
+    }
+    .tag-local { background: #1a4030; color: #5dcc90; }
+    .tag-cloud { background: #1a2a50; color: #7db8ff; }
+    .engine-card ul {
+      padding-left: 16px;
+      font-size: 0.85rem;
+      color: var(--subtext);
+    }
+    .engine-card li { margin: 3px 0; }
+
+    /* ── Pip table highlight ── */
+    .required { color: var(--accent2); font-weight: 600; }
+    .optional  { color: var(--subtext); }
+
+    /* ── Footer ── */
+    footer {
+      margin-top: 64px;
+      padding: 28px 40px;
+      border-top: 1px solid var(--border);
+      color: var(--subtext);
+      font-size: 0.82rem;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="container">
+    <h1>VoxLog</h1>
+    <div class="tagline">語音轉錄 + AI 整理工具 ── 安裝與使用說明</div>
+    <div class="badge-row">
+      <span class="badge badge-blue">Python 3.12</span>
+      <span class="badge badge-blue">Windows / macOS</span>
+      <span class="badge badge-green">NVIDIA GPU 加速支援</span>
+      <span class="badge badge-warn">首次安裝約需 30 分鐘</span>
+    </div>
+  </div>
+</header>
+
+<div class="container">
+
+  <!-- TOC -->
+  <nav class="toc">
+    <h2>目錄</h2>
+    <ol>
+      <li><a href="#requirements">系統需求</a></li>
+      <li><a href="#python">安裝 Python 3.12</a></li>
+      <li><a href="#ffmpeg">安裝 FFmpeg</a></li>
+      <li><a href="#pip">安裝 Python 套件</a></li>
+      <li><a href="#torch-cuda">NVIDIA GPU 加速（選用）</a></li>
+      <li><a href="#ollama">安裝 Ollama 本地 AI（選用）</a></li>
+      <li><a href="#huggingface">HuggingFace Token（說話人分離）</a></li>
+      <li><a href="#ai-keys">雲端 AI API Key（選用）</a></li>
+      <li><a href="#launch">啟動 VoxLog</a></li>
+      <li><a href="#usage">使用流程</a></li>
+      <li><a href="#troubleshoot">常見問題</a></li>
+    </ol>
+  </nav>
+
+  <!-- 1. 系統需求 -->
+  <section id="requirements">
+    <div class="section-title">
+      <span class="section-num">1</span>
+      <h2>系統需求</h2>
+    </div>
+    <table>
+      <tr><th>項目</th><th>最低需求</th><th>建議</th></tr>
+      <tr>
+        <td>作業系統</td>
+        <td>Windows 10 / macOS 12</td>
+        <td>Windows 11 / macOS 14</td>
+      </tr>
+      <tr>
+        <td>Python</td>
+        <td colspan="2">3.12（<strong>不建議 3.13+</strong>，部分套件尚未支援）</td>
+      </tr>
+      <tr>
+        <td>RAM</td>
+        <td>8 GB</td>
+        <td>16 GB 以上</td>
+      </tr>
+      <tr>
+        <td>GPU（選用）</td>
+        <td>無 GPU，使用 CPU 轉錄</td>
+        <td>NVIDIA RTX 系列（VRAM 6GB+），速度提升 5–10 倍</td>
+      </tr>
+      <tr>
+        <td>磁碟空間</td>
+        <td>5 GB（基本套件 + small 模型）</td>
+        <td>20 GB+（large-v3 模型 + Ollama 模型）</td>
+      </tr>
+    </table>
+  </section>
+
+  <!-- 2. Python -->
+  <section id="python">
+    <div class="section-title">
+      <span class="section-num">2</span>
+      <h2>安裝 Python 3.12</h2>
+    </div>
+    <div class="steps">
+      <div class="step">
+        <div class="step-num"></div>
+        <div class="step-body">
+          <h3>下載 Python 3.12</h3>
+          <p>前往官網下載 3.12.x 安裝檔（勿使用 3.13+）：</p>
+          <pre><code>https://www.python.org/downloads/release/python-3129/</code></pre>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num"></div>
+        <div class="step-body">
+          <h3>安裝時勾選「Add Python to PATH」</h3>
+          <p>Windows 安裝程式底部的 checkbox，務必打勾，否則終端機找不到 python 指令。</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num"></div>
+        <div class="step-body">
+          <h3>確認安裝成功</h3>
+          <pre><code>python --version
+# 應顯示 Python 3.12.x</code></pre>
+        </div>
+      </div>
+    </div>
+    <div class="callout callout-warn">
+      <span class="callout-icon">⚠️</span>
+      <span>若電腦已有 Python 3.13 或 3.14，建議另開虛擬環境（<code>python3.12 -m venv venv</code>）再裝套件，避免版本衝突。</span>
+    </div>
+  </section>
+
+  <!-- 3. FFmpeg -->
+  <section id="ffmpeg">
+    <div class="section-title">
+      <span class="section-num">3</span>
+      <h2>安裝 FFmpeg</h2>
+    </div>
+    <p style="color:var(--subtext); margin-bottom:14px;">Whisper 轉錄音訊前需要 FFmpeg 做格式轉換，沒有它就無法讀取 mp4/m4a 等格式。</p>
+
+    <div class="card">
+      <div class="card-title">Windows（推薦：WinGet）</div>
+      <pre><code>winget install Gyan.FFmpeg</code></pre>
+      <p>安裝後重新開啟終端機即可，PATH 會自動設定。</p>
+    </div>
+
+    <div class="card">
+      <div class="card-title">macOS（推薦：Homebrew）</div>
+      <pre><code>brew install ffmpeg</code></pre>
+    </div>
+
+    <div class="card">
+      <div class="card-title">確認安裝</div>
+      <pre><code>ffmpeg -version
+# 應顯示版本號，例如 ffmpeg version 8.x</code></pre>
+    </div>
+  </section>
+
+  <!-- 4. pip 套件 -->
+  <section id="pip">
+    <div class="section-title">
+      <span class="section-num">4</span>
+      <h2>安裝 Python 套件</h2>
+    </div>
+
+    <p style="color:var(--subtext); margin-bottom:16px;">以下指令請在終端機（PowerShell / Terminal）執行，進入 VoxLog 資料夾後依序安裝。</p>
+
+    <div class="card">
+      <div class="card-title">必裝套件（核心功能）</div>
+      <pre><code>pip install customtkinter pillow requests opencc-python-reimplemented</code></pre>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Whisper 引擎（擇一或兩者都裝）</div>
+      <pre><code># 引擎 A：標準 Whisper（較穩定）
+pip install openai-whisper
+
+# 引擎 B：WhisperX（較快，支援說話人分離）
+pip install whisperx</code></pre>
+      <div class="callout callout-warn" style="margin-top:12px;">
+        <span class="callout-icon">⚠️</span>
+        <span>裝完 <code>whisperx</code> 後，它會把 PyTorch 覆蓋回 CPU 版。如有 NVIDIA GPU，裝完後必須重新執行第 5 節的 CUDA 版 PyTorch 指令。</span>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">YouTube 下載功能（選用）</div>
+      <pre><code>pip install yt-dlp</code></pre>
+      <p>不需要此功能可跳過，App 不會因此無法啟動。</p>
+    </div>
+
+    <div class="card">
+      <div class="card-title">雲端 AI 套件（選用，依使用的引擎安裝）</div>
+      <pre><code># Claude（Anthropic）
+pip install anthropic
+
+# Gemini（Google）— 注意：只裝新版 SDK，兩個不能共存
+pip uninstall google-generativeai google-genai -y
+pip install google-genai</code></pre>
+      <p>使用 Ollama 本地 AI 時不需要安裝任何 AI 套件。</p>
+    </div>
+
+    <h3 style="margin:24px 0 12px; font-size:0.95rem; color:var(--subtext);">套件對照表</h3>
+    <table>
+      <tr><th>套件名稱</th><th>功能</th><th>必要性</th></tr>
+      <tr><td><code>customtkinter</code></td><td>GUI 介面框架</td><td><span class="required">必裝</span></td></tr>
+      <tr><td><code>pillow</code></td><td>按鈕圖示渲染</td><td><span class="required">必裝</span></td></tr>
+      <tr><td><code>requests</code></td><td>Ollama 本地 AI 通訊</td><td><span class="required">必裝</span></td></tr>
+      <tr><td><code>opencc-python-reimplemented</code></td><td>簡體→繁體中文轉換（WhisperX 引擎用）</td><td><span class="required">必裝</span></td></tr>
+      <tr><td><code>openai-whisper</code></td><td>引擎 A：Whisper 轉錄</td><td><span class="optional">擇一</span></td></tr>
+      <tr><td><code>whisperx</code></td><td>引擎 B：WhisperX 轉錄 + 說話人分離</td><td><span class="optional">擇一</span></td></tr>
+      <tr><td><code>torch</code></td><td>AI 推理框架（Whisper 依賴）</td><td><span class="required">必裝（自動隨 Whisper 安裝）</span></td></tr>
+      <tr><td><code>yt-dlp</code></td><td>YouTube 影片下載</td><td><span class="optional">選用</span></td></tr>
+      <tr><td><code>anthropic</code></td><td>Claude API 客戶端</td><td><span class="optional">選用（雲端 AI）</span></td></tr>
+      <tr><td><code>google-genai</code></td><td>Gemini API 客戶端</td><td><span class="optional">選用（雲端 AI）</span></td></tr>
+    </table>
+  </section>
+
+  <!-- 5. CUDA -->
+  <section id="torch-cuda">
+    <div class="section-title">
+      <span class="section-num">5</span>
+      <h2>NVIDIA GPU 加速（選用）</h2>
+    </div>
+    <p style="color:var(--subtext); margin-bottom:14px;">沒有 NVIDIA GPU 可跳過此節，App 會自動退回 CPU 模式。</p>
+
+    <div class="steps">
+      <div class="step">
+        <div class="step-num"></div>
+        <div class="step-body">
+          <h3>確認驅動版本支援 CUDA 12.4</h3>
+          <pre><code>nvidia-smi
+# 右上角應顯示 CUDA Version: 12.x 以上</code></pre>
+          <p>若版本過低，請先至 NVIDIA 官網更新顯示卡驅動。</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num"></div>
+        <div class="step-body">
+          <h3>安裝 CUDA 12.4 版 PyTorch</h3>
+          <pre><code>pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu124</code></pre>
+          <p>此步驟必須在裝完 <code>whisperx</code> <strong>之後</strong>執行，否則會被蓋回 CPU 版。</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num"></div>
+        <div class="step-body">
+          <h3>確認 GPU 可用</h3>
+          <pre><code>python -c "import torch; print(torch.cuda.is_available(), torch.cuda.get_device_name(0))"
+# 應顯示 True  NVIDIA GeForce RTX xxxx</code></pre>
+        </div>
+      </div>
+    </div>
+
+    <div class="callout callout-info">
+      <span class="callout-icon">ℹ️</span>
+      <span>RTX 4060（8GB VRAM）建議使用 <code>large-v3</code> 模型，設定 <code>int8_float16</code>，batch size 8，約每分鐘音訊 15 秒完成。</span>
+    </div>
+  </section>
+
+  <!-- 6. Ollama -->
+  <section id="ollama">
+    <div class="section-title">
+      <span class="section-num">6</span>
+      <h2>安裝 Ollama 本地 AI（選用）</h2>
+    </div>
+
+    <div class="callout callout-tip">
+      <span class="callout-icon">🔒</span>
+      <span>使用 Ollama 時，所有資料<strong>完全在本機處理</strong>，不會上傳到任何雲端服務。適合處理含有個資或敏感內容的錄音。</span>
+    </div>
+
+    <div class="steps" style="margin-top:18px;">
+      <div class="step">
+        <div class="step-num"></div>
+        <div class="step-body">
+          <h3>下載並安裝 Ollama</h3>
+          <pre><code>https://ollama.com/download</code></pre>
+          <p>Windows / macOS 均有安裝包，安裝後會在背景自動啟動服務（port 11434）。</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num"></div>
+        <div class="step-body">
+          <h3>下載繁體中文友善模型（擇一）</h3>
+          <pre><code># 推薦：繁中支援最好，7B 約 4.7GB
+ollama pull qwen2.5:7b
+
+# 備選：較大但品質更好
+ollama pull qwen2.5:14b
+
+# 備選：Google 出品，繁中品質不錯
+ollama pull gemma3:12b</code></pre>
+          <p>首次下載需要時間，視網速而定，之後每次都是本機推理。</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num"></div>
+        <div class="step-body">
+          <h3>確認 Ollama 服務運作</h3>
+          <pre><code># 終端機輸入，應看到已下載的模型清單
+ollama list</code></pre>
+        </div>
+      </div>
+    </div>
+
+    <h3 style="margin:20px 0 12px; font-size:0.95rem;">模型選擇參考</h3>
+    <table>
+      <tr><th>模型名稱</th><th>大小</th><th>繁中品質</th><th>建議用途</th></tr>
+      <tr>
+        <td><code>qwen2.5:7b</code></td><td>4.7 GB</td><td>★★★★☆</td>
+        <td>校正逐字稿、SRT 切句（推薦入門）</td>
+      </tr>
+      <tr>
+        <td><code>qwen2.5:14b</code></td><td>9 GB</td><td>★★★★★</td>
+        <td>摘要、高品質校正（需 12GB+ VRAM 或 RAM）</td>
+      </tr>
+      <tr>
+        <td><code>gemma3:12b</code></td><td>8.1 GB</td><td>★★★★☆</td>
+        <td>摘要產生（Google 模型）</td>
+      </tr>
+      <tr>
+        <td><code>llama3.2:3b</code></td><td>2 GB</td><td>★★★☆☆</td>
+        <td>低階機器測試用，中文較弱</td>
+      </tr>
+    </table>
+
+    <div class="callout callout-warn" style="margin-top:14px;">
+      <span class="callout-icon">⚠️</span>
+      <span>本地模型的摘要與校正品質低於 Claude / Gemini，建議先用 <code>qwen2.5:7b</code> 試跑，評估品質後再決定是否升級模型。</span>
+    </div>
+  </section>
+
+  <!-- 7. HuggingFace -->
+  <section id="huggingface">
+    <div class="section-title">
+      <span class="section-num">7</span>
+      <h2>HuggingFace Token（說話人分離）</h2>
+    </div>
+    <p style="color:var(--subtext); margin-bottom:14px;">只有使用 <strong>WhisperX 引擎</strong>並開啟說話人分離時才需要。引擎 A（Whisper）不需要。</p>
+
+    <div class="steps">
+      <div class="step">
+        <div class="step-num"></div>
+        <div class="step-body">
+          <h3>建立 HuggingFace 帳號並產生 Token</h3>
+          <p>前往 <code>https://huggingface.co/settings/tokens</code>，建立 token，並勾選 <strong>「Read access to public gated repositories」</strong>。</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num"></div>
+        <div class="step-body">
+          <h3>接受以下兩個模型的使用條款</h3>
+          <pre><code>https://huggingface.co/pyannote/speaker-diarization-community-1
+https://huggingface.co/pyannote/segmentation-3.0</code></pre>
+          <p>進入各模型頁面，點選「Agree and access repository」。</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num"></div>
+        <div class="step-body">
+          <h3>將 Token 填入 VoxLog</h3>
+          <p>啟動 App 後，在「HuggingFace Token」欄位貼上 token，App 會自動儲存到 <code>config.json</code>。</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 8. AI Keys -->
+  <section id="ai-keys">
+    <div class="section-title">
+      <span class="section-num">8</span>
+      <h2>雲端 AI API Key（選用）</h2>
+    </div>
+
+    <p style="color:var(--subtext); margin-bottom:16px;">選擇 Ollama 本地 AI 時完全不需要以下任何 Key。以下為雲端引擎說明：</p>
+
+    <div class="engine-grid">
+      <div class="engine-card local">
+        <div class="engine-name">Ollama</div>
+        <span class="engine-tag tag-local">完全本地</span>
+        <ul>
+          <li>不需要 API Key</li>
+          <li>在「Model 名稱」欄填模型名稱</li>
+          <li>例：<code>qwen2.5:7b</code></li>
+          <li>資料不離開本機</li>
+        </ul>
+      </div>
+      <div class="engine-card cloud">
+        <div class="engine-name">Claude</div>
+        <span class="engine-tag tag-cloud">雲端</span>
+        <ul>
+          <li>需要 Anthropic API Key</li>
+          <li>取得：<code>console.anthropic.com</code></li>
+          <li>摘要與校正品質最佳</li>
+          <li>依 token 計費</li>
+        </ul>
+      </div>
+      <div class="engine-card cloud">
+        <div class="engine-name">Gemini</div>
+        <span class="engine-tag tag-cloud">雲端</span>
+        <ul>
+          <li>需要 Google API Key</li>
+          <li>取得：<code>aistudio.google.com</code></li>
+          <li>使用 gemini-3.1-flash-lite</li>
+          <li>有免費額度，SRT 切句推薦</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="callout callout-tip" style="margin-top:16px;">
+      <span class="callout-icon">💡</span>
+      <span>Key 只需在 App 中填寫一次，會自動儲存到同目錄的 <code>config.json</code>。請不要將此檔案上傳到 GitHub 或分享給他人。</span>
+    </div>
+  </section>
+
+  <!-- 9. 啟動 -->
+  <section id="launch">
+    <div class="section-title">
+      <span class="section-num">9</span>
+      <h2>啟動 VoxLog</h2>
+    </div>
+
+    <div class="card">
+      <div class="card-title">方法一：雙擊 run.bat（Windows 推薦）</div>
+      <p>直接雙擊 VoxLog 資料夾中的 <code>run.bat</code> 即可啟動。</p>
+    </div>
+
+    <div class="card">
+      <div class="card-title">方法二：終端機啟動</div>
+      <pre><code>cd C:\path\to\VoxLog
+python transcribe_gui.py</code></pre>
+    </div>
+
+    <div class="callout callout-info">
+      <span class="callout-icon">ℹ️</span>
+      <span>第一次使用 Whisper 或 WhisperX 時，App 會自動下載模型到本機快取（large-v3 約 3 GB），需要等待幾分鐘，之後每次啟動都是直接從快取載入。</span>
+    </div>
+  </section>
+
+  <!-- 10. 使用流程 -->
+  <section id="usage">
+    <div class="section-title">
+      <span class="section-num">10</span>
+      <h2>使用流程</h2>
+    </div>
+
+    <div class="steps">
+      <div class="step">
+        <div class="step-num"></div>
+        <div class="step-body">
+          <h3>選擇音訊 / 影片檔案</h3>
+          <p>點「選擇檔案」，支援 <code>.m4a .mp3 .wav .ogg .flac .mp4 .mkv .avi .mov .webm</code>。</p>
+          <p>或在 YouTube 網址列貼上影片連結，點「下載並轉錄」（需安裝 yt-dlp）。</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num"></div>
+        <div class="step-body">
+          <h3>選擇轉錄引擎與模型</h3>
+          <p><strong>Whisper</strong>：穩定，無說話人分離。<br>
+          <strong>WhisperX</strong>：較快，支援辨識多位說話者（需 HuggingFace Token）。</p>
+          <p>模型建議：<code>large-v3</code>（精準）或 <code>medium</code>（快速）。</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num"></div>
+        <div class="step-body">
+          <h3>開始轉錄</h3>
+          <p>點「開始轉錄」，進度條會即時更新。完成後自動產生 <code>_transcript.txt</code>，若勾選「輸出 SRT」則另產生字幕檔。</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num"></div>
+        <div class="step-body">
+          <h3>AI 後製（選用）</h3>
+          <p>選擇 AI 引擎（Ollama / Claude / Gemini）後可執行：</p>
+          <ul style="font-size:0.88rem; color:var(--subtext); padding-left:18px; margin-top:6px;">
+            <li><strong>校正逐字稿</strong>：修正空耳錯字，產生 <code>_transcript_corrected.txt</code></li>
+            <li><strong>產生摘要</strong>：整理重點、人物、議題，產生 <code>_摘要.md</code></li>
+            <li><strong>匯出 SRT</strong>：語意切句，輸出適合後製的字幕 SRT</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 11. 常見問題 -->
+  <section id="troubleshoot">
+    <div class="section-title">
+      <span class="section-num">11</span>
+      <h2>常見問題</h2>
+    </div>
+
+    <div class="card">
+      <div class="card-title">❌ ModuleNotFoundError: No module named 'whisper'</div>
+      <pre><code>pip install openai-whisper</code></pre>
+    </div>
+
+    <div class="card">
+      <div class="card-title">❌ torch.cuda.is_available() 回傳 False（有 NVIDIA GPU）</div>
+      <p>PyTorch 被 whisperx 覆蓋回 CPU 版，重新安裝 CUDA 版：</p>
+      <pre><code>pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu124</code></pre>
+    </div>
+
+    <div class="card">
+      <div class="card-title">❌ Ollama 連線失敗 / requests.ConnectionError</div>
+      <p>Ollama 服務未啟動，開啟終端機手動啟動：</p>
+      <pre><code>ollama serve</code></pre>
+      <p>或確認系統匣中 Ollama 圖示是否存在（Windows 安裝後通常自動背景執行）。</p>
+    </div>
+
+    <div class="card">
+      <div class="card-title">❌ Gemini API 回傳 404 或 limit: 0</div>
+      <p>部分 Gemini 模型在免費額度限制。VoxLog 使用 <code>gemini-3.1-flash-lite</code>，若仍有問題請確認 Google AI Studio 中帳號的 API 配額狀態。</p>
+    </div>
+
+    <div class="card">
+      <div class="card-title">❌ 說話人分離失敗 / 401 Unauthorized</div>
+      <p>HuggingFace Token 未設定，或未在以下兩個模型頁面接受使用條款：</p>
+      <pre><code>pyannote/speaker-diarization-community-1
+pyannote/segmentation-3.0</code></pre>
+    </div>
+
+    <div class="card">
+      <div class="card-title">❌ ffmpeg not found 或音訊格式無法讀取</div>
+      <p>FFmpeg 未安裝或不在 PATH 中。執行 <code>ffmpeg -version</code> 確認，若無回應請重新安裝並重啟終端機。</p>
+    </div>
+  </section>
+
+</div>
+
+<footer>
+  <div class="container">
+    VoxLog &nbsp;·&nbsp; 語音辨識 + AI 整理工具 &nbsp;·&nbsp; 本說明文件隨版本更新
+  </div>
+</footer>
+
+</body>
+</html>

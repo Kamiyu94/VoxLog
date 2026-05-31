@@ -1,0 +1,34 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Logs and databases
+*.log
+
+# Media / Audio files (Avoid uploading large media files)
+media/
+*.mp4
+*.mp3
+*.wav
+*.m4a
+*.mkv
+*.avi
+*.mov
+*.webm
+
+# Config
+config.json
+
+# OS generated files
+.DS_Store
+Thumbs.db

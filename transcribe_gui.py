@@ -1,0 +1,1604 @@
+import os
+import re
+import sys
+import json
+import time
+import math
+import platform
+import threading
+import multiprocessing
+import tkinter as tk
+from tkinter import filedialog, messagebox
+import customtkinter as ctk
+
+ctk.set_appearance_mode("dark")
+ctk.set_default_color_theme("blue")
+
+_WIN_FFMPEG = r"C:\Users\kamiy\AppData\Local\Microsoft\WinGet\Packages\Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe\ffmpeg-8.1.1-full_build\bin"
+if platform.system() == "Windows":
+    os.environ["PATH"] += ";" + _WIN_FFMPEG
+
+FONT_UI = "Microsoft JhengHei" if platform.system() == "Windows" else "PingFang TC"
+
+CONFIG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.json")
+
+BG        = "#1E1E1E"
+SURFACE   = "#2A2A2A"
+BORDER    = "#3A3A3A"
+TEXT      = "#E8E8E8"
+SUBTEXT   = "#888888"
+ACCENT    = "#4A9EFF"
+GREEN     = "#27AE60"
+GREEN_DIM = "#1A5C38"
+RED       = "#E74C3C"
+RED_HOVER = "#C0392B"
+BLUE      = "#2471A3"
+BLUE_DIM  = "#1A4F72"
+
+VIDEO_EXTS = {".mp4", ".mkv", ".avi", ".mov", ".webm"}
+
+LANG_MAP = {
+    "中文": "zh",
+    "英文": "en",
+    "日文": "ja",
+    "韓文": "ko",
+    "自動偵測": None,
+}
+
+AI_SRT_PROMPT = """以下有 {n} 段逐字稿，每段以 ===SEG編號=== 標記開頭。
+請將每段文字依語意切成適合字幕的短句，每句 15 字以內，以自然語意斷句。
+
+輸出格式（嚴格遵守）：
+- 每段用 ===SEG編號=== 開頭（與輸入編號對應）
+- 短句各占一行
+- 不要加任何其他內容、編號或符號
+
+{segments}"""
+
+CORRECT_PROMPT = """以下是一份語音辨識產生的逐字稿，可能含有空耳錯誤、同音異字或辨識錯誤。{context}
+請修正明顯的辨識錯誤，規則如下：
+- 保留所有說話人標記（如 SPEAKER_00：）和時間戳格式（如 [00:01 --> 00:21]）
+- 不要增加、刪除或合併段落
+- 不要改變說話內容的意思
+- 以繁體中文輸出
+- 直接輸出修正後的逐字稿，不要在前後加任何說明文字或前言
+
+逐字稿內容：
+{transcript}"""
+
+NOTES_PROMPT = """以下是一份逐字稿（可能是會議、訪談或影片內容），請整理成結構化的摘要。{context}
+
+逐字稿內容：
+{transcript}
+
+請輸出以下格式：
+# 摘要
+
+## 基本資訊
+- 日期：
+- 參與者：
+
+## 重點摘要
+（3-5個重點）
+
+## 討論內容
+（按主題整理，標記說話者）
+
+## 決策事項
+（本次討論確認的決定，若無則寫「無」）
+
+## 待辦事項
+| 負責人 | 事項 | 期限 |
+|--------|------|------|
+
+## 標籤
+
+### 人物標籤
+（列出影片中出現或被提到的人名，每個一行，格式：`#人名`；若無則寫「無」）
+
+### 主題標籤
+（3–5個主要主題，每個一行，格式：`#主題`）
+
+### 議題標籤
+（5–8個具體討論的議題或關鍵詞，每個一行，格式：`#議題`）
+
+請用繁體中文輸出。"""
+
+
+def load_config():
+    try:
+        with open(CONFIG_PATH, "r") as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+
+def save_config(data):
+    cfg = load_config()
+    cfg.update(data)
+    with open(CONFIG_PATH, "w") as f:
+        json.dump(cfg, f, indent=2)
+
+
+def _format_srt_time(seconds):
+    h = int(seconds // 3600)
+    m = int((seconds % 3600) // 60)
+    s = int(seconds % 60)
+    ms = int(round((seconds - int(seconds)) * 1000))
+    return f"{h:02d}:{m:02d}:{s:02d},{ms:03d}"
+
+
+def _words_to_srt_segments(words, max_chars=20):
+    """把逐字時間戳列表依標點/字數切成字幕段落，回傳 [(start, end, text), ...]。"""
+    segments = []
+    cur_words = []
+    cur_text = ""
+    for w in words:
+        word = w.get("word", "").strip()
+        if not word:
+            continue
+        cur_words.append(w)
+        cur_text += word
+        ends_sentence = any(c in word for c in "。！？")
+        ends_clause = any(c in word for c in "，、") and len(cur_text) >= max_chars
+        over_limit = len(cur_text) >= max_chars * 2  # 無標點強制切割
+        if (ends_sentence or ends_clause or over_limit) and cur_words:
+            segments.append((
+                cur_words[0].get("start", 0),
+                cur_words[-1].get("end", 0),
+                cur_text,
+            ))
+            cur_words, cur_text = [], ""
+    if cur_words:
+        segments.append((
+            cur_words[0].get("start", 0),
+            cur_words[-1].get("end", 0),
+            cur_text,
+        ))
+    return segments
+
+
+def _call_ai(prompt, ai_engine, api_key):
+    if ai_engine == "claude":
+        import anthropic
+        client = anthropic.Anthropic(api_key=api_key)
+        msg = client.messages.create(
+            model="claude-sonnet-4-6",
+            max_tokens=4096,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        return msg.content[0].text
+    elif ai_engine == "ollama":
+        import requests
+        model = api_key.strip() if api_key.strip() else "qwen2.5:7b"
+        resp = requests.post(
+            "http://localhost:11434/api/generate",
+            json={"model": model, "prompt": prompt, "stream": False},
+            timeout=300,
+        )
+        resp.raise_for_status()
+        return resp.json()["response"]
+    elif ai_engine == "lmstudio":
+        import requests
+        model = api_key.strip() if api_key.strip() else "google/gemma-4-e4b"
+        resp = requests.post(
+            "http://localhost:1234/v1/chat/completions",
+            json={"model": model, "messages": [{"role": "user", "content": prompt}], "stream": False},
+            timeout=300,
+        )
+        resp.raise_for_status()
+        return resp.json()["choices"][0]["message"]["content"]
+    else:
+        from google import genai
+        client = genai.Client(api_key=api_key)
+        response = client.models.generate_content(
+            model="gemini-3.1-flash-lite",
+            contents=prompt,
+        )
+        return response.text
+
+
+_TXT_TS_PAT = re.compile(r'^\[(\d+):(\d+)\s*-->\s*(\d+):(\d+)\]\s*(.+)$')
+_TXT_SPK_PAT = re.compile(r'^(.{1,40})：\s*$')
+
+
+def txt_to_srt(transcript_path, out_path=None):
+    if out_path is None:
+        base = transcript_path.rsplit(".", 1)[0]
+        for suffix in ("_transcript_corrected", "_transcript"):
+            if base.endswith(suffix):
+                base = base[:-len(suffix)]
+                break
+        out_path = base + ".srt"
+
+    def _fmt(total_seconds):
+        h = total_seconds // 3600
+        m = (total_seconds % 3600) // 60
+        s = total_seconds % 60
+        return f"{h:02d}:{m:02d}:{s:02d},000"
+
+    entries = []
+    current_speaker = None
+    with open(transcript_path, "r", encoding="utf-8") as f:
+        for line in f:
+            line = line.rstrip()
+            m = _TXT_TS_PAT.match(line)
+            if m:
+                sm, ss, em, es, text = m.groups()
+                start = int(sm) * 60 + int(ss)
+                end = int(em) * 60 + int(es)
+                subtitle = text
+                entries.append((_fmt(start), _fmt(end), subtitle))
+            else:
+                spk_m = _TXT_SPK_PAT.match(line)
+                if spk_m and line.strip():
+                    current_speaker = spk_m.group(1).strip()
+
+    with open(out_path, "w", encoding="utf-8") as f:
+        for i, (start, end, text) in enumerate(entries, 1):
+            f.write(f"{i}\n{start} --> {end}\n{text}\n\n")
+
+    return out_path
+
+
+_SRT_TS_PAT = re.compile(
+    r'(\d+):(\d+):(\d+),(\d+)\s*-->\s*(\d+):(\d+):(\d+),(\d+)'
+)
+
+
+def _parse_srt(srt_path):
+    """解析 SRT 檔，回傳 [(start_float, end_float, text), ...]。"""
+    entries = []
+    with open(srt_path, "r", encoding="utf-8") as f:
+        content = f.read()
+    for block in re.split(r'\n\s*\n', content.strip()):
+        lines = block.strip().splitlines()
+        for i, line in enumerate(lines):
+            m = _SRT_TS_PAT.match(line.strip())
+            if m:
+                h1, m1, s1, ms1, h2, m2, s2, ms2 = m.groups()
+                start = int(h1)*3600 + int(m1)*60 + int(s1) + int(ms1)/1000
+                end   = int(h2)*3600 + int(m2)*60 + int(s2) + int(ms2)/1000
+                text  = " ".join(lines[i+1:]).strip()
+                if text:
+                    entries.append((start, end, text))
+                break
+    return entries
+
+
+def _ai_cut_segments(segments, ai_engine, api_key):
+    """一次 API call 批次切割所有長 segment，回傳新的 [(start, end, text), ...]。"""
+    short = {}   # index → (start, end, text) 不需要切的
+    long_idx = []  # 需要切的 segment index
+
+    for i, (start, end, text) in enumerate(segments):
+        if len(text) <= 15:
+            short[i] = (start, end, text)
+        else:
+            long_idx.append(i)
+
+    phrases_map = {}  # index → [phrase, ...]
+    if long_idx:
+        seg_blocks = "\n".join(
+            f"===SEG{i}===（{int(segments[i][1] - segments[i][0])}秒）\n{segments[i][2]}"
+            for i in long_idx
+        )
+        prompt = AI_SRT_PROMPT.format(n=len(long_idx), segments=seg_blocks)
+        ai_out = _call_ai(prompt, ai_engine, api_key)
+
+        current_idx = None
+        for line in ai_out.splitlines():
+            line = line.strip()
+            m = re.match(r'^===SEG(\d+)===', line)
+            if m:
+                current_idx = int(m.group(1))
+                phrases_map[current_idx] = []
+            elif current_idx is not None and line:
+                phrases_map[current_idx].append(line)
+
+    result = []
+    for i, (start, end, text) in enumerate(segments):
+        if i in short:
+            result.append((start, end, text))
+            continue
+        duration = end - start
+        phrases = phrases_map.get(i, [])
+        if not phrases:
+            result.append((start, end, text))
+            continue
+        total_chars = sum(len(p) for p in phrases)
+        t = start
+        for j, phrase in enumerate(phrases):
+            ratio = len(phrase) / total_chars if total_chars > 0 else 1.0 / len(phrases)
+            phrase_end = t + duration * ratio if j < len(phrases) - 1 else end
+            result.append((t, phrase_end, phrase))
+            t = phrase_end
+    return result
+
+
+def _write_srt(entries, out_path):
+    with open(out_path, "w", encoding="utf-8") as f:
+        for i, (s, e, text) in enumerate(entries, 1):
+            f.write(f"{i}\n{_format_srt_time(s)} --> {_format_srt_time(e)}\n{text}\n\n")
+
+
+def txt_to_srt_ai(transcript_path, ai_engine, api_key, out_path=None):
+    segments = []
+    with open(transcript_path, "r", encoding="utf-8") as f:
+        for line in f:
+            line = line.rstrip()
+            m = _TXT_TS_PAT.match(line)
+            if m:
+                sm, ss, em, es, text = m.groups()
+                segments.append((float(int(sm)*60 + int(ss)), float(int(em)*60 + int(es)), text.strip()))
+    all_entries = _ai_cut_segments(segments, ai_engine, api_key)
+    if out_path is None:
+        base = transcript_path.rsplit(".", 1)[0]
+        for suffix in ("_transcript_corrected", "_transcript"):
+            if base.endswith(suffix):
+                base = base[:-len(suffix)]
+                break
+        out_path = base + ".srt"
+    _write_srt(all_entries, out_path)
+    return out_path
+
+
+def correct_transcript(transcript_path, ai_engine, api_key, out_path=None, context=""):
+    with open(transcript_path, "r", encoding="utf-8") as f:
+        transcript = f.read()
+    ctx = f"\n背景資訊：{context}" if context else ""
+    corrected = _call_ai(CORRECT_PROMPT.format(context=ctx, transcript=transcript), ai_engine, api_key)
+    if out_path is None:
+        base = transcript_path.rsplit("_transcript", 1)[0]
+        out_path = base + "_transcript_corrected.txt"
+    with open(out_path, "w", encoding="utf-8") as f:
+        f.write(corrected)
+    return out_path
+
+
+def generate_summary(transcript_path, ai_engine, api_key, out_path=None, context=""):
+    with open(transcript_path, "r", encoding="utf-8") as f:
+        transcript = f.read()
+    ctx = f"\n背景資訊：{context}" if context else ""
+    notes = _call_ai(NOTES_PROMPT.format(context=ctx, transcript=transcript), ai_engine, api_key)
+    if out_path is None:
+        out_path = transcript_path.replace("_transcript.txt", "_摘要.md")
+        if out_path == transcript_path:
+            out_path = transcript_path.rsplit(".", 1)[0] + "_摘要.md"
+    with open(out_path, "w", encoding="utf-8") as f:
+        f.write(notes)
+    return out_path
+
+
+class _StdoutCapture:
+    _pat = re.compile(r'\[(\d+):(\d+\.\d+)')
+
+    def __init__(self, duration, prog_q):
+        self._duration = duration
+        self._prog_q = prog_q
+        self._buf = ""
+
+    def write(self, text):
+        self._buf += text
+        while '\n' in self._buf:
+            line, self._buf = self._buf.split('\n', 1)
+            m = self._pat.search(line)
+            if m and self._duration > 0:
+                t = int(m.group(1)) * 60 + float(m.group(2))
+                pct = min(int(t / self._duration * 100), 99)
+                self._prog_q.put(pct)
+
+    def flush(self):
+        pass
+
+
+def whisper_worker(audio, out_dir, model_name, lang, prompt, write_srt, result_q, log_q, prog_q):
+    try:
+        import whisper, torch, os, sys, platform
+        if platform.system() == "Windows":
+            os.environ["PATH"] += ";" + r"C:\Users\kamiy\AppData\Local\Microsoft\WinGet\Packages\Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe\ffmpeg-8.1.1-full_build\bin"
+
+        if torch.cuda.is_available():
+            device, gpu_name = "cuda", torch.cuda.get_device_name(0)
+        elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+            device, gpu_name = "mps", "Apple MPS"
+        else:
+            device, gpu_name = "cpu", "無"
+
+        log_q.put(f"使用裝置：{device.upper()}（{gpu_name}）")
+        log_q.put(f"載入模型：{model_name}")
+        model = whisper.load_model(model_name, device=device)
+
+        audio_data = whisper.load_audio(audio)
+        duration = len(audio_data) / 16000
+        m, s = int(duration // 60), int(duration % 60)
+        log_q.put(f"開始轉錄：{os.path.basename(audio)}（{m} 分 {s} 秒）")
+
+        sys.stdout = _StdoutCapture(duration, prog_q)
+        result = model.transcribe(audio, language=lang, verbose=True,
+                                  initial_prompt=prompt or None,
+                                  word_timestamps=True)
+        sys.stdout = sys.__stdout__
+        prog_q.put(100)
+
+        base = os.path.splitext(os.path.basename(audio))[0]
+        out_path = os.path.join(out_dir, f"{base}_transcript.txt")
+        with open(out_path, "w", encoding="utf-8") as f:
+            for seg in result["segments"]:
+                start = int(seg["start"])
+                end = int(seg["end"])
+                ts = f"[{start//60:02d}:{start%60:02d} --> {end//60:02d}:{end%60:02d}]"
+                f.write(f"{ts} {seg['text'].strip()}\n")
+
+        if write_srt:
+            srt_path = os.path.join(out_dir, f"{base}.srt")
+            all_chunks = []
+            for seg in result["segments"]:
+                words = seg.get("words", [])
+                if words:
+                    all_chunks.extend(_words_to_srt_segments(words))
+                else:
+                    all_chunks.append((seg["start"], seg["end"], seg["text"].strip()))
+            with open(srt_path, "w", encoding="utf-8") as f:
+                for i, (s, e, text) in enumerate(all_chunks, 1):
+                    f.write(f"{i}\n{_format_srt_time(s)} --> {_format_srt_time(e)}\n{text}\n\n")
+            log_q.put(f"字幕已輸出：{os.path.basename(srt_path)}")
+
+        result_q.put(("done", out_path))
+    except Exception as e:
+        try:
+            sys.stdout = sys.__stdout__
+        except Exception:
+            pass
+        result_q.put(("error", str(e)))
+
+
+def whisperx_worker(audio, out_dir, model_name, lang, hf_token, num_speakers, prompt, write_srt, result_q, log_q, prog_q):
+    try:
+        import whisperx, torch, os, platform
+        if platform.system() == "Windows":
+            os.environ["PATH"] += ";" + r"C:\Users\kamiy\AppData\Local\Microsoft\WinGet\Packages\Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe\ffmpeg-8.1.1-full_build\bin"
+
+        if torch.cuda.is_available():
+            device, compute_type, gpu_name = "cuda", "int8_float16", torch.cuda.get_device_name(0)
+        else:
+            device, compute_type, gpu_name = "cpu", "int8", "無（CPU）"
+
+        log_q.put(f"使用裝置：{device.upper()}（{gpu_name}）")
+        log_q.put(f"載入模型：{model_name}")
+
+        model = whisperx.load_model(model_name, device, compute_type=compute_type)
+        prog_q.put(10)
+
+        audio_data = whisperx.load_audio(audio)
+        duration = len(audio_data) / 16000
+        m, s = int(duration // 60), int(duration % 60)
+        log_q.put(f"開始轉錄：{os.path.basename(audio)}（{m} 分 {s} 秒）")
+
+        transcribe_kwargs = {"batch_size": 8}
+        if lang:
+            transcribe_kwargs["language"] = lang
+        result = model.transcribe(audio_data, **transcribe_kwargs)
+        prog_q.put(40)
+
+        detected_lang = result.get("language", lang or "zh")
+        log_q.put("對齊時間戳...")
+        model_a, metadata = whisperx.load_align_model(language_code=detected_lang, device=device)
+        result = whisperx.align(result["segments"], model_a, metadata, audio_data, device,
+                                return_char_alignments=False)
+        prog_q.put(65)
+
+        log_q.put("分析說話人...")
+        from whisperx.diarize import DiarizationPipeline
+        diarize_model = DiarizationPipeline(token=hf_token, device=device)
+        diarize_kwargs = {}
+        if num_speakers and num_speakers > 0:
+            diarize_kwargs["num_speakers"] = num_speakers
+        diarize_segments = diarize_model(audio_data, **diarize_kwargs)
+        result = whisperx.assign_word_speakers(diarize_segments, result)
+        prog_q.put(90)
+
+        try:
+            import opencc
+            converter = opencc.OpenCC("s2twp")
+        except Exception:
+            converter = None
+
+        base = os.path.splitext(os.path.basename(audio))[0]
+        out_path = os.path.join(out_dir, f"{base}_transcript.txt")
+        segments_for_srt = []
+        with open(out_path, "w", encoding="utf-8") as f:
+            current_speaker = None
+            for seg in result["segments"]:
+                start = seg.get("start", 0)
+                end = seg.get("end", 0)
+                speaker = seg.get("speaker", "SPEAKER_??")
+                text = seg.get("text", "").strip()
+                if not text:
+                    continue
+                if converter:
+                    text = converter.convert(text)
+                ts = f"[{int(start)//60:02d}:{int(start)%60:02d} --> {int(end)//60:02d}:{int(end)%60:02d}]"
+                if speaker != current_speaker:
+                    if current_speaker is not None:
+                        f.write("\n")
+                    f.write(f"{speaker}：\n")
+                    current_speaker = speaker
+                f.write(f"{ts} {text}\n")
+                segments_for_srt.append((start, end, speaker, text))
+
+        if write_srt:
+            srt_path = os.path.join(out_dir, f"{base}.srt")
+            all_chunks = []
+            for seg in result["segments"]:
+                speaker = seg.get("speaker", "")
+                words = seg.get("words", [])
+                if words:
+                    for s, e, text in _words_to_srt_segments(words):
+                        if converter:
+                            text = converter.convert(text)
+                        all_chunks.append((s, e, speaker, text))
+                else:
+                    text = seg.get("text", "").strip()
+                    if converter:
+                        text = converter.convert(text)
+                    all_chunks.append((seg.get("start", 0), seg.get("end", 0), speaker, text))
+            with open(srt_path, "w", encoding="utf-8") as f:
+                for i, (s, e, speaker, text) in enumerate(all_chunks, 1):
+                    f.write(f"{i}\n{_format_srt_time(s)} --> {_format_srt_time(e)}\n{text}\n\n")
+            log_q.put(f"字幕已輸出：{os.path.basename(srt_path)}")
+
+        result_q.put(("done", out_path))
+    except Exception as e:
+        result_q.put(("error", str(e)))
+
+
+def _make_icon():
+    try:
+        from PIL import Image, ImageDraw
+        size = 256
+        img = Image.new("RGBA", (size, size), (30, 30, 30, 255))
+        draw = ImageDraw.Draw(img)
+        pad_x = size * 0.18
+        top_y = size * 0.16
+        bot_y = size * 0.82
+        cx    = size / 2
+        amp   = size * 0.038
+        freq  = 3.5
+        lw    = max(3, size // 20)
+        color = (74, 158, 255, 255)
+        steps = 300
+
+        def stroke(x0, y0, x1, y1):
+            dx, dy = x1 - x0, y1 - y0
+            L = math.sqrt(dx*dx + dy*dy)
+            px, py = -dy/L, dx/L
+            pts = []
+            for i in range(steps + 1):
+                t = i / steps
+                w = amp * math.sin(t * freq * 2 * math.pi) * (1 - t * 0.8)
+                pts.append((x0 + t*dx + px*w, y0 + t*dy + py*w))
+            draw.line(pts, fill=color, width=lw)
+
+        stroke(pad_x, top_y, cx, bot_y)
+        stroke(size - pad_x, top_y, cx, bot_y)
+        return img
+    except Exception:
+        return None
+
+
+def _make_audio_icon(size=38):
+    try:
+        from PIL import Image, ImageDraw
+        img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+        draw = ImageDraw.Draw(img)
+        cx, cy = size // 2, size // 2
+        bar_w = max(2, size // 12)
+        heights = [0.35, 0.6, 0.85, 1.0, 0.85, 0.6, 0.35]
+        n = len(heights)
+        gap = bar_w
+        total = n * bar_w + (n - 1) * gap
+        x0 = cx - total // 2
+        color = (255, 255, 255, 210)
+        for i, h in enumerate(heights):
+            bh = int(size * h * 0.72)
+            x = x0 + i * (bar_w + gap)
+            y0_ = cy - bh // 2
+            y1_ = cy + bh // 2
+            draw.rounded_rectangle([x, y0_, x + bar_w, y1_], radius=bar_w // 2, fill=color)
+        return img
+    except Exception:
+        return None
+
+
+def _make_yt_icon(size=22):
+    try:
+        from PIL import Image, ImageDraw
+        img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+        draw = ImageDraw.Draw(img)
+        pad = 1
+        rh = size // 3
+        draw.rounded_rectangle(
+            [pad, rh, size - pad, size - rh],
+            radius=size // 7, fill=(204, 0, 0, 255),
+        )
+        cx, cy = size // 2, size // 2
+        t = size // 5
+        draw.polygon([(cx - t, cy - t), (cx + t + 1, cy), (cx - t, cy + t)], fill="white")
+        return img
+    except Exception:
+        return None
+
+
+class SpeakerNameDialog(ctk.CTkToplevel):
+    def __init__(self, parent, speakers):
+        super().__init__(parent)
+        self.title("設定說話者名稱")
+        self.resizable(False, False)
+        self.configure(fg_color=BG)
+        self.grab_set()
+        self.result = None
+        self.entries = {}
+
+        ctk.CTkLabel(
+            self,
+            text=f"辨識出 {len(speakers)} 位說話者，已填入預設名稱，可自行修改：",
+            fg_color="transparent", text_color=TEXT,
+            font=ctk.CTkFont(FONT_UI, 13),
+        ).pack(anchor="w", padx=20, pady=(18, 10))
+
+        for spk in speakers:
+            row_frame = ctk.CTkFrame(self, fg_color="transparent")
+            row_frame.pack(fill="x", padx=20, pady=4)
+            ctk.CTkLabel(row_frame, text=spk,
+                         fg_color="transparent", text_color=SUBTEXT,
+                         font=ctk.CTkFont(FONT_UI, 12),
+                         width=110, anchor="e").pack(side="left", padx=(0, 10))
+            var = tk.StringVar(value=spk)
+            ctk.CTkEntry(row_frame, textvariable=var, width=200,
+                         fg_color=SURFACE, text_color=TEXT,
+                         border_color=BORDER, border_width=1,
+                         font=ctk.CTkFont(FONT_UI, 12)).pack(side="left")
+            self.entries[spk] = var
+
+        btn_frame = ctk.CTkFrame(self, fg_color="transparent")
+        btn_frame.pack(pady=(12, 18), padx=20, fill="x")
+        ctk.CTkButton(btn_frame, text="確認", command=self._ok,
+                      fg_color=GREEN, hover_color="#219A52",
+                      text_color="white", width=90).pack(side="right", padx=(8, 0))
+        ctk.CTkButton(btn_frame, text="略過", command=self._cancel,
+                      fg_color=SURFACE, hover_color=BORDER,
+                      text_color=TEXT, width=90).pack(side="right")
+        self.transient(parent)
+        self.wait_window()
+
+    def _ok(self):
+        self.result = {spk: (var.get().strip() or spk)
+                       for spk, var in self.entries.items()}
+        self.destroy()
+
+    def _cancel(self):
+        self.destroy()
+
+
+class TranscribeApp:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("VoxLog")
+        self.root.geometry("780x720")
+        self.root.minsize(700, 580)
+        self.root.configure(fg_color=BG)
+
+        self.root.grid_columnconfigure(0, weight=1)
+        self.root.grid_rowconfigure(11, weight=1)
+
+        self.process = None
+        self.result_q = None
+        self.log_q = None
+        self.prog_q = None
+        self.timer_start = None
+        self.timer_id = None
+        self.transcript_path = None
+        self.notes_thread = None
+        self.ai_cancelled = False
+        self._ai_anim_running = False
+        self._ai_anim_val = 0.0
+        self._ai_anim_dir = 1
+        self.audio_var = tk.StringVar()
+        self.out_var = tk.StringVar()
+        self.srt_var = tk.BooleanVar(value=True)
+        self.cfg = load_config()
+        self.cookies_file_path = self.cfg.get("cookies_file_path", "")
+
+        self._set_icon()
+        self._build_ui()
+
+    def _set_icon(self):
+        img = _make_icon()
+        if img is None:
+            return
+        try:
+            from PIL import ImageTk, Image
+            self._icon_photos = [
+                ImageTk.PhotoImage(img.resize((s, s), Image.LANCZOS))
+                for s in [16, 32, 64, 128, 256]
+            ]
+            self.root.iconphoto(True, *self._icon_photos)
+        except Exception:
+            pass
+
+    # ── Section divider ────────────────────────────
+    def _section_divider(self, row, text, pady=(14, 6)):
+        frame = ctk.CTkFrame(self.root, fg_color="transparent")
+        frame.grid(row=row, column=0, sticky="we", padx=20, pady=pady)
+        frame.grid_columnconfigure(0, weight=1)
+        frame.grid_columnconfigure(2, weight=1)
+        ctk.CTkFrame(frame, height=1, fg_color=BORDER).grid(
+            row=0, column=0, sticky="we", padx=(0, 10), pady=7)
+        ctk.CTkLabel(frame, text=text,
+                     fg_color="transparent", text_color=SUBTEXT,
+                     font=ctk.CTkFont(FONT_UI, 11)).grid(row=0, column=1)
+        ctk.CTkFrame(frame, height=1, fg_color=BORDER).grid(
+            row=0, column=2, sticky="we", padx=(10, 0), pady=7)
+
+    # ── Build UI ───────────────────────────────────
+    def _build_ui(self):
+        F = ctk.CTkFont
+
+        # ── Row 0: 設定（模型 / 語言 / 引擎）──
+        settings = ctk.CTkFrame(self.root, fg_color=SURFACE, corner_radius=8)
+        settings.grid(row=0, column=0, sticky="we", padx=20, pady=(14, 4))
+
+        ctk.CTkLabel(settings, text="模型", fg_color="transparent", text_color=SUBTEXT,
+                     font=F(FONT_UI, 12)).pack(side="left", padx=(14, 4))
+        self.model_var = tk.StringVar(value="medium")
+        ctk.CTkComboBox(settings, variable=self.model_var,
+                        values=["tiny", "base", "small", "medium", "large"],
+                        width=100, state="readonly",
+                        fg_color=BG, text_color=TEXT, button_color=BORDER,
+                        button_hover_color=ACCENT, border_color=BORDER,
+                        dropdown_fg_color=SURFACE, dropdown_text_color=TEXT,
+                        dropdown_hover_color=BORDER,
+                        font=F(FONT_UI, 12)).pack(side="left")
+
+        ctk.CTkLabel(settings, text="語言", fg_color="transparent", text_color=SUBTEXT,
+                     font=F(FONT_UI, 12)).pack(side="left", padx=(16, 4))
+        self.lang_var = tk.StringVar(value="中文")
+        ctk.CTkComboBox(settings, variable=self.lang_var,
+                        values=list(LANG_MAP.keys()),
+                        width=110, state="readonly",
+                        fg_color=BG, text_color=TEXT, button_color=BORDER,
+                        button_hover_color=ACCENT, border_color=BORDER,
+                        dropdown_fg_color=SURFACE, dropdown_text_color=TEXT,
+                        dropdown_hover_color=BORDER,
+                        font=F(FONT_UI, 12)).pack(side="left")
+
+        ctk.CTkLabel(settings, text="引擎", fg_color="transparent", text_color=SUBTEXT,
+                     font=F(FONT_UI, 12)).pack(side="left", padx=(20, 6))
+        self.engine_var = tk.StringVar(value="whisper")
+        for val, label in [("whisper", "Whisper"), ("whisperx", "WhisperX（說話人辨識）")]:
+            ctk.CTkRadioButton(
+                settings, text=label, variable=self.engine_var,
+                value=val, command=self._on_engine_change,
+                text_color=TEXT, fg_color=ACCENT, hover_color=ACCENT,
+                font=F(FONT_UI, 12),
+            ).pack(side="left", padx=(0, 12))
+        ctk.CTkLabel(settings, text="", fg_color="transparent").pack(side="left", padx=6)
+
+        # ── Row 1: 來源選擇（兩個方形按鈕，置中）──
+        source = ctk.CTkFrame(self.root, fg_color="transparent")
+        source.grid(row=1, column=0, pady=(16, 8))
+
+        audio_col = ctk.CTkFrame(source, fg_color="transparent")
+        audio_col.pack(side="left", padx=28)
+        audio_img = _make_audio_icon(40)
+        self._audio_icon = ctk.CTkImage(
+            light_image=audio_img, dark_image=audio_img, size=(40, 40)
+        ) if audio_img else None
+        ctk.CTkButton(
+            audio_col, text="選擇音/影檔", image=self._audio_icon, compound="top",
+            command=self.pick_audio,
+            fg_color=ACCENT, hover_color="#2980B9", text_color="white",
+            font=F(FONT_UI, 15, weight="bold"), width=165, height=110,
+        ).pack()
+        self.audio_display_var = tk.StringVar(value="未選擇")
+        ctk.CTkLabel(audio_col, textvariable=self.audio_display_var,
+                     fg_color="transparent", text_color=SUBTEXT,
+                     font=F(FONT_UI, 12), width=165, anchor="center").pack(pady=(6, 0))
+
+        yt_col = ctk.CTkFrame(source, fg_color="transparent")
+        yt_col.pack(side="left", padx=28)
+        yt_img = _make_yt_icon(40)
+        self._yt_icon = ctk.CTkImage(
+            light_image=yt_img, dark_image=yt_img, size=(40, 40)
+        ) if yt_img else None
+        self.yt_btn = ctk.CTkButton(
+            yt_col, text="YouTube下載", image=self._yt_icon, compound="top",
+            command=self.download_youtube,
+            fg_color="#CC0000", hover_color="#990000", text_color="white",
+            font=F(FONT_UI, 15, weight="bold"), width=165, height=110,
+        )
+        self.yt_btn.pack()
+        self.yt_url_var = tk.StringVar()
+        ctk.CTkEntry(
+            yt_col, textvariable=self.yt_url_var,
+            placeholder_text="貼上網址...",
+            fg_color=SURFACE, text_color=TEXT,
+            border_color=BORDER, border_width=1,
+            font=F(FONT_UI, 12), width=165,
+        ).pack(pady=(6, 0))
+        self.cookies_browser_var = tk.StringVar(value=self.cfg.get("cookies_browser", "Cookies: 無"))
+        ctk.CTkComboBox(
+            yt_col, variable=self.cookies_browser_var,
+            values=["Cookies: 無", "Cookies: Chrome", "Cookies: Edge", "Cookies: Firefox", "Cookies: Brave", "Cookies: Opera", "Cookies: Safari", "Cookies: 檔案", "Cookies: 選擇檔案..."],
+            width=165, state="readonly",
+            command=self._on_cookies_change,
+            fg_color=SURFACE, text_color=TEXT, button_color=BORDER,
+            button_hover_color=ACCENT, border_color=BORDER,
+            dropdown_fg_color=SURFACE, dropdown_text_color=TEXT,
+            dropdown_hover_color=BORDER,
+            font=F(FONT_UI, 12)
+        ).pack(pady=(6, 0))
+
+        # ── Row 2: WhisperX 選項（預設隱藏）──
+        self.wx_frame = ctk.CTkFrame(self.root, fg_color="transparent")
+        self.wx_frame.grid(row=2, column=0, sticky="w", padx=20, pady=(0, 4))
+        self.wx_frame.grid_remove()
+
+        ctk.CTkLabel(self.wx_frame, text="HF Token",
+                     fg_color="transparent", text_color=TEXT,
+                     font=F(FONT_UI, 14), width=80, anchor="e").pack(side="left", padx=(0, 8))
+        self.token_var = tk.StringVar(value=self.cfg.get("hf_token", ""))
+        ctk.CTkEntry(self.wx_frame, textvariable=self.token_var, width=280, show="*",
+                     fg_color=SURFACE, text_color=TEXT,
+                     border_color=BORDER, border_width=1,
+                     font=F(FONT_UI, 13)).pack(side="left", padx=(0, 16))
+        ctk.CTkLabel(self.wx_frame, text="說話人數",
+                     fg_color="transparent", text_color=TEXT,
+                     font=F(FONT_UI, 14)).pack(side="left", padx=(0, 6))
+        self.speakers_var = tk.IntVar(value=0)
+        tk.Spinbox(self.wx_frame, from_=0, to=10, textvariable=self.speakers_var,
+                   width=4, bg=SURFACE, fg=TEXT, buttonbackground=BORDER,
+                   relief="flat", font=(FONT_UI, 13),
+                   highlightthickness=1, highlightbackground=BORDER).pack(side="left")
+        ctk.CTkLabel(self.wx_frame, text="（0 ＝ 自動）",
+                     fg_color="transparent", text_color=SUBTEXT,
+                     font=F(FONT_UI, 13)).pack(side="left", padx=(6, 0))
+
+        # ── Row 3: 輸出 + 情境說明 ──
+        r_out = ctk.CTkFrame(self.root, fg_color="transparent")
+        r_out.grid(row=3, column=0, sticky="we", padx=20, pady=4)
+
+        self.prompt_var = tk.StringVar(value="以下是繁體中文對話。")
+        ctk.CTkEntry(r_out, textvariable=self.prompt_var,
+                     fg_color=SURFACE, text_color=TEXT,
+                     border_color=BORDER, border_width=1,
+                     font=F(FONT_UI, 13)).pack(side="right", fill="x", expand=True)
+        ctk.CTkLabel(r_out, text="情境說明",
+                     fg_color="transparent", text_color=TEXT,
+                     font=F(FONT_UI, 14)).pack(side="right", padx=(20, 6))
+        ctk.CTkButton(r_out, text="輸出資料夾", command=self.pick_output,
+                      fg_color=SURFACE, hover_color=BORDER, text_color=TEXT,
+                      font=F(FONT_UI, 14), width=110).pack(side="left")
+        self.out_display_var = tk.StringVar(value="未選擇")
+        ctk.CTkLabel(r_out, textvariable=self.out_display_var,
+                     fg_color="transparent", text_color=SUBTEXT,
+                     font=F(FONT_UI, 13), anchor="w",
+                     width=180).pack(side="left", padx=(10, 0))
+        ctk.CTkCheckBox(r_out, text="輸出字幕 SRT", variable=self.srt_var,
+                        fg_color=ACCENT, hover_color="#2980B9",
+                        text_color=TEXT, font=F(FONT_UI, 13),
+                        ).pack(side="left", padx=(12, 0))
+
+        # ── Row 4: ▶ ■ ──
+        trans_ctrl = ctk.CTkFrame(self.root, fg_color="transparent")
+        trans_ctrl.grid(row=4, column=0, pady=(10, 6))
+        self.start_btn = ctk.CTkButton(
+            trans_ctrl, text="▶  開始轉錄", command=self.start,
+            fg_color=GREEN, hover_color="#219A52", text_color="white",
+            font=F(FONT_UI, 16, weight="bold"), width=140, height=48,
+        )
+        self.start_btn.pack(side="left", padx=10)
+        self.stop_btn = ctk.CTkButton(
+            trans_ctrl, text="■  停止", command=self.stop,
+            fg_color=RED, hover_color=RED_HOVER, text_color="white",
+            font=F(FONT_UI, 16, weight="bold"), width=110, height=48,
+            state="disabled",
+        )
+        self.stop_btn.pack(side="left", padx=10)
+
+        # ── Row 5: AI 引擎 / Key ──
+        ai_frame = ctk.CTkFrame(self.root, fg_color="transparent")
+        ai_frame.grid(row=5, column=0, sticky="we", padx=20, pady=(4, 4))
+        ctk.CTkLabel(ai_frame, text="AI 引擎",
+                     fg_color="transparent", text_color=TEXT,
+                     font=F(FONT_UI, 14), width=72, anchor="e").pack(side="left", padx=(0, 8))
+        self.ai_engine_var = tk.StringVar(value="gemini")
+        for val, label in [("claude", "Claude"), ("gemini", "Gemini"), ("ollama", "Ollama"), ("lmstudio", "LM Studio")]:
+            ctk.CTkRadioButton(
+                ai_frame, text=label, variable=self.ai_engine_var,
+                value=val, command=self._on_ai_engine_change,
+                text_color=TEXT, fg_color=ACCENT, hover_color=ACCENT,
+                font=F(FONT_UI, 14),
+            ).pack(side="left", padx=(0, 12))
+        self.ai_key_label = ctk.CTkLabel(ai_frame, text="Gemini Key",
+                                          fg_color="transparent", text_color=SUBTEXT,
+                                          font=F(FONT_UI, 13))
+        self.ai_key_label.pack(side="left", padx=(8, 6))
+        self.ai_key_var = tk.StringVar(value=self.cfg.get("gemini_key", ""))
+        self.ai_key_entry = ctk.CTkEntry(ai_frame, textvariable=self.ai_key_var, width=240, show="*",
+                                         fg_color=SURFACE, text_color=TEXT,
+                                         border_color=BORDER, border_width=1,
+                                         font=F(FONT_UI, 13))
+        self.ai_key_entry.pack(side="left")
+
+        # ── Row 6: 後製按鈕 ──
+        post_outer = ctk.CTkFrame(self.root, fg_color="transparent")
+        post_outer.grid(row=6, column=0, pady=(0, 4))
+        post_row = ctk.CTkFrame(post_outer, fg_color="transparent")
+        post_row.pack()
+        self.load_btn = ctk.CTkButton(
+            post_row, text="載入逐字稿", command=self.load_transcript,
+            fg_color=SURFACE, hover_color=BORDER, text_color=TEXT,
+            font=F(FONT_UI, 14), width=130,
+        )
+        self.load_btn.pack(side="left", padx=8)
+        self.correct_btn = ctk.CTkButton(
+            post_row, text="校正逐字稿", command=self.correct_transcript,
+            fg_color=BLUE_DIM, hover_color=BLUE, text_color=SUBTEXT,
+            font=F(FONT_UI, 14), width=130, state="disabled",
+        )
+        self.correct_btn.pack(side="left", padx=8)
+        self.notes_btn = ctk.CTkButton(
+            post_row, text="產生摘要", command=self.generate_notes,
+            fg_color=BLUE_DIM, hover_color=BLUE, text_color=SUBTEXT,
+            font=F(FONT_UI, 14), width=120, state="disabled",
+        )
+        self.notes_btn.pack(side="left", padx=8)
+        self.export_srt_btn = ctk.CTkButton(
+            post_row, text="匯出 SRT", command=self.export_srt,
+            fg_color=BLUE_DIM, hover_color=BLUE, text_color=SUBTEXT,
+            font=F(FONT_UI, 14), width=110, state="disabled",
+        )
+        self.export_srt_btn.pack(side="left", padx=8)
+        self.loaded_file_var = tk.StringVar(value="")
+        ctk.CTkLabel(post_outer, textvariable=self.loaded_file_var,
+                     fg_color="transparent", text_color=ACCENT,
+                     font=F(FONT_UI, 12)).pack(pady=(4, 0))
+
+        # ── Row 7: 計時器 + 百分比 ──
+        info_frame = ctk.CTkFrame(self.root, fg_color="transparent")
+        info_frame.grid(row=7, column=0, pady=(8, 2))
+        self.timer_var = tk.StringVar(value="00:00:00")
+        ctk.CTkLabel(info_frame, textvariable=self.timer_var,
+                     fg_color="transparent", text_color=ACCENT,
+                     font=F("Consolas", 22, weight="bold")).pack(side="left", padx=(0, 16))
+        self.pct_var = tk.StringVar(value="")
+        ctk.CTkLabel(info_frame, textvariable=self.pct_var,
+                     fg_color="transparent", text_color=SUBTEXT,
+                     font=F(FONT_UI, 16)).pack(side="left")
+
+        # ── Row 8: 狀態 ──
+        self.status_label = ctk.CTkLabel(
+            self.root, text="等待中...",
+            fg_color="transparent", text_color=SUBTEXT,
+            font=F(FONT_UI, 15, weight="bold"),
+        )
+        self.status_label.grid(row=8, column=0)
+
+        # ── Row 9: 進度條 ──
+        self.progress = ctk.CTkProgressBar(
+            self.root, mode="determinate",
+            fg_color=SURFACE, progress_color=ACCENT,
+        )
+        self.progress.set(0)
+        self.progress.grid(row=9, column=0, padx=20, pady=6, sticky="we")
+
+        # ── Row 10: Log header ──
+        log_hdr = ctk.CTkFrame(self.root, fg_color="transparent")
+        log_hdr.grid(row=10, column=0, sticky="we", padx=20, pady=(4, 0))
+        log_hdr.grid_columnconfigure(1, weight=1)
+        ctk.CTkLabel(log_hdr, text="Log",
+                     fg_color="transparent", text_color=SUBTEXT,
+                     font=F(FONT_UI, 12)).grid(row=0, column=0, sticky="w")
+        ctk.CTkLabel(log_hdr, text="Kamiyu Lab",
+                     fg_color="transparent", text_color=SUBTEXT,
+                     font=F(FONT_UI, 13)).grid(row=0, column=2, sticky="e")
+
+        # ── Row 11: Log (expands) ──
+        self.log = ctk.CTkTextbox(
+            self.root,
+            fg_color=SURFACE, text_color=TEXT,
+            font=F("Consolas", 13),
+            height=110,
+            state="disabled",
+        )
+        self.log.grid(row=11, column=0, padx=20, pady=(2, 16), sticky="nswe")
+
+    # ── YouTube 下載 ───────────────────────────────
+    def download_youtube(self):
+        url = self.yt_url_var.get().strip()
+        if not url:
+            self._set_status("請輸入 YouTube 網址", RED)
+            return
+        out_dir = self.out_var.get().strip()
+        if not out_dir:
+            out_dir = os.path.join(os.path.expanduser("~"), "Downloads")
+            self.out_var.set(out_dir)
+            self.out_display_var.set(out_dir)
+
+        browser_selected = self.cookies_browser_var.get()
+        save_config({"cookies_browser": browser_selected})
+        self.cfg["cookies_browser"] = browser_selected
+
+        self.yt_btn.configure(state="disabled")
+        self._set_status("下載中...", ACCENT)
+        self.log_write(f"開始下載：{url}")
+        if browser_selected == "Cookies: 檔案":
+            self.log_write(f"使用 Cookies 檔案：{os.path.basename(self.cookies_file_path)}")
+        elif browser_selected != "Cookies: 無":
+            self.log_write(f"使用瀏覽器餅乾：{browser_selected}")
+
+        def run():
+            try:
+                import yt_dlp
+                final_path = [None]
+
+                def hook(d):
+                    if d["status"] == "finished":
+                        base = os.path.splitext(d["filename"])[0]
+                        final_path[0] = base + ".mp3"
+
+                ydl_opts = {
+                    "format": "bestaudio/best",
+                    "outtmpl": os.path.join(out_dir, "%(title)s.%(ext)s"),
+                    "postprocessors": [{"key": "FFmpegExtractAudio", "preferredcodec": "mp3"}],
+                    "progress_hooks": [hook],
+                    "quiet": True,
+                    "js_runtimes": {"node": {}, "deno": {}, "bun": {}, "quickjs": {}},
+                }
+                if browser_selected == "Cookies: 檔案":
+                    if self.cookies_file_path and os.path.exists(self.cookies_file_path):
+                        ydl_opts["cookiefile"] = self.cookies_file_path
+                else:
+                    browser_map = {
+                        "Cookies: Chrome": "chrome",
+                        "Cookies: Edge": "edge",
+                        "Cookies: Firefox": "firefox",
+                        "Cookies: Brave": "brave",
+                        "Cookies: Opera": "opera",
+                        "Cookies: Safari": "safari",
+                    }
+                    browser_name = browser_map.get(browser_selected)
+                    if browser_name:
+                        ydl_opts["cookiesfrombrowser"] = (browser_name,)
+
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    ydl.download([url])
+                self.root.after(0, lambda: self._yt_done(final_path[0]))
+            except ImportError:
+                self.root.after(0, lambda: self._yt_error("請先安裝 yt-dlp：pip install yt-dlp"))
+            except Exception as e:
+                err = str(e)
+                self.root.after(0, lambda: self._yt_error(err))
+
+        threading.Thread(target=run, daemon=True).start()
+
+    def _yt_done(self, path):
+        self.yt_btn.configure(state="normal")
+        if path and os.path.exists(path):
+            self.audio_var.set(path)
+            self.audio_display_var.set(self._short_name(os.path.basename(path)))
+            self.log_write(f"下載完成：{os.path.basename(path)}")
+            self._set_status("下載完成，可開始轉錄", GREEN)
+        else:
+            self.log_write("下載完成，請手動選擇音檔")
+            self._set_status("下載完成", ACCENT)
+
+    def _yt_error(self, err):
+        self.yt_btn.configure(state="normal")
+        self.log_write(f"下載錯誤：{err}")
+        self._set_status("下載失敗", RED)
+
+    # ── Callbacks ──────────────────────────────────
+    def _on_engine_change(self):
+        if self.engine_var.get() == "whisperx":
+            self.wx_frame.grid()
+        else:
+            self.wx_frame.grid_remove()
+
+    def _on_ai_engine_change(self):
+        engine = self.ai_engine_var.get()
+        if engine == "claude":
+            self.ai_key_label.configure(text="Claude Key")
+            self.ai_key_var.set(self.cfg.get("anthropic_key", ""))
+            self.ai_key_entry.configure(show="*")
+        elif engine == "ollama":
+            self.ai_key_label.configure(text="Model 名稱")
+            self.ai_key_var.set(self.cfg.get("ollama_model", "qwen2.5:7b"))
+            self.ai_key_entry.configure(show="")
+        elif engine == "lmstudio":
+            self.ai_key_label.configure(text="Model 名稱")
+            self.ai_key_var.set(self.cfg.get("lmstudio_model", "google/gemma-4-e4b"))
+            self.ai_key_entry.configure(show="")
+        else:
+            self.ai_key_label.configure(text="Gemini Key")
+            self.ai_key_var.set(self.cfg.get("gemini_key", ""))
+            self.ai_key_entry.configure(show="*")
+
+    def _on_cookies_change(self, choice):
+        if choice == "Cookies: 選擇檔案...":
+            self.pick_cookies_file()
+        elif choice == "Cookies: 檔案":
+            if not self.cookies_file_path or not os.path.exists(self.cookies_file_path):
+                self.pick_cookies_file()
+
+    def pick_cookies_file(self):
+        path = filedialog.askopenfilename(
+            title="選擇 Cookies 檔案",
+            filetypes=[
+                ("文字檔", "*.txt"),
+                ("所有檔案", "*.*")
+            ],
+            parent=self.root
+        )
+        if path:
+            self.cookies_file_path = path
+            save_config({"cookies_file_path": path, "cookies_browser": "Cookies: 檔案"})
+            self.cfg["cookies_file_path"] = path
+            self.cfg["cookies_browser"] = "Cookies: 檔案"
+            self.cookies_browser_var.set("Cookies: 檔案")
+            self.log_write(f"已載入 Cookies 檔案：{os.path.basename(path)}")
+        else:
+            if not self.cookies_file_path or not os.path.exists(self.cookies_file_path):
+                self.cookies_browser_var.set("Cookies: 無")
+
+    def pick_audio(self):
+        path = filedialog.askopenfilename(
+            filetypes=[
+                ("音訊/影片檔", "*.m4a *.mp3 *.wav *.mp4 *.mkv *.avi *.mov *.webm *.ogg *.flac"),
+                ("音訊檔", "*.m4a *.mp3 *.wav *.ogg *.flac"),
+                ("影片檔", "*.mp4 *.mkv *.avi *.mov *.webm"),
+                ("所有檔案", "*.*"),
+            ])
+        if path:
+            self.audio_var.set(path)
+            self.audio_display_var.set(self._short_name(os.path.basename(path)))
+            ext = os.path.splitext(path)[1].lower()
+            self.srt_var.set(ext in VIDEO_EXTS)
+            if not self.out_var.get():
+                self.out_var.set(os.path.dirname(path))
+                self.out_display_var.set(os.path.dirname(path))
+
+    def pick_output(self):
+        path = filedialog.askdirectory()
+        if path:
+            self.out_var.set(path)
+            self.out_display_var.set(path)
+
+    def log_write(self, msg):
+        self.log.configure(state="normal")
+        self.log.insert(tk.END, msg + "\n")
+        self.log.see(tk.END)
+        self.log.configure(state="disabled")
+
+    def update_timer(self):
+        if self.timer_start is not None:
+            elapsed = int(time.time() - self.timer_start)
+            self.timer_var.set(f"{elapsed//3600:02d}:{(elapsed%3600)//60:02d}:{elapsed%60:02d}")
+            self.timer_id = self.root.after(1000, self.update_timer)
+
+    # ── AI 進度動畫 ────────────────────────────────
+    def _start_ai_progress(self):
+        self.timer_start = time.time()
+        self.update_timer()
+        self.pct_var.set("")
+        self._ai_anim_running = True
+        self._ai_anim_val = 0.0
+        self._ai_anim_dir = 1
+        self._animate_ai_progress()
+
+    def _animate_ai_progress(self):
+        if not self._ai_anim_running:
+            return
+        self._ai_anim_val += self._ai_anim_dir * 0.025
+        if self._ai_anim_val >= 1.0:
+            self._ai_anim_val = 1.0
+            self._ai_anim_dir = -1
+        elif self._ai_anim_val <= 0.0:
+            self._ai_anim_val = 0.0
+            self._ai_anim_dir = 1
+        self.progress.set(self._ai_anim_val)
+        self.root.after(40, self._animate_ai_progress)
+
+    def _stop_ai_progress(self, success=True):
+        self._ai_anim_running = False
+        self.progress.set(1.0 if success else 0.0)
+        if self.timer_id:
+            self.root.after_cancel(self.timer_id)
+            self.timer_id = None
+        self.timer_start = None
+
+    def _set_status(self, msg, color=SUBTEXT):
+        self.status_label.configure(text=msg, text_color=color)
+
+    def _short_name(self, name, maxlen=22):
+        return name if len(name) <= maxlen else name[:maxlen - 1] + "…"
+
+    # ── Poll & Transcription ───────────────────────
+    def poll(self):
+        try:
+            while True:
+                pct = self.prog_q.get_nowait()
+                self.progress.set(pct / 100)
+                self.pct_var.set(f"{pct}%")
+        except Exception:
+            pass
+        try:
+            while True:
+                self.log_write(self.log_q.get_nowait())
+        except Exception:
+            pass
+        try:
+            status, data = self.result_q.get_nowait()
+            if status == "done":
+                self.progress.set(1.0)
+                self.pct_var.set("100%")
+                self.log_write(f"完成！儲存至：{data}")
+                self._set_status("轉錄完成！可繼續使用下方後製功能", GREEN)
+                speakers = self._find_speakers(data)
+                if speakers:
+                    dlg = SpeakerNameDialog(self.root, speakers)
+                    if dlg.result:
+                        self._rename_speakers(data, dlg.result)
+                self.transcript_path = data
+                self.loaded_file_var.set(f"已載入：{os.path.basename(data)}")
+                self.correct_btn.configure(state="normal", fg_color=BLUE, text_color="white")
+                self.notes_btn.configure(state="normal", fg_color=BLUE, text_color="white")
+                self.export_srt_btn.configure(state="normal", fg_color=BLUE, text_color="white")
+            else:
+                self.log_write(f"錯誤：{data}")
+                self._set_status("發生錯誤", RED)
+            self.finish()
+            return
+        except Exception:
+            pass
+        if self.process and self.process.is_alive():
+            self.root.after(300, self.poll)
+        else:
+            self.finish()
+
+    def start(self):
+        audio = self.audio_var.get().strip()
+        out_dir = self.out_var.get().strip()
+        if not audio or not os.path.exists(audio):
+            self._set_status("請先選擇音檔", RED)
+            return
+        if not out_dir:
+            self._set_status("請選擇輸出資料夾", RED)
+            return
+
+        engine = self.engine_var.get()
+        lang = LANG_MAP.get(self.lang_var.get())
+        prompt = self.prompt_var.get().strip()
+
+        write_srt = self.srt_var.get()
+        if write_srt and engine == "whisper":
+            switch = messagebox.askyesno(
+                "建議切換引擎",
+                "輸出字幕時建議使用 WhisperX 引擎，\n可提供逐字對齊、字幕時間戳更精準。\n\n要自動切換到 WhisperX 嗎？\n（選「否」繼續使用 Whisper）",
+                parent=self.root,
+            )
+            if switch:
+                self.engine_var.set("whisperx")
+                self.wx_frame.grid()
+                engine = "whisperx"
+
+        if engine == "whisperx":
+            hf_token = self.token_var.get().strip()
+            if not hf_token:
+                self._set_status("請輸入 HuggingFace Token", RED)
+                return
+            save_config({"hf_token": hf_token})
+            num_speakers = self.speakers_var.get()
+
+        self.correct_btn.configure(state="disabled", fg_color=BLUE_DIM, text_color=SUBTEXT)
+        self.notes_btn.configure(state="disabled", fg_color=BLUE_DIM, text_color=SUBTEXT)
+        self.transcript_path = None
+        self.result_q = multiprocessing.Queue()
+        self.log_q = multiprocessing.Queue()
+        self.prog_q = multiprocessing.Queue()
+
+        if engine == "whisperx":
+            self.process = multiprocessing.Process(
+                target=whisperx_worker,
+                args=(audio, out_dir, self.model_var.get(), lang,
+                      hf_token, num_speakers, prompt, write_srt,
+                      self.result_q, self.log_q, self.prog_q),
+                daemon=True)
+        else:
+            self.process = multiprocessing.Process(
+                target=whisper_worker,
+                args=(audio, out_dir, self.model_var.get(), lang, prompt, write_srt,
+                      self.result_q, self.log_q, self.prog_q),
+                daemon=True)
+
+        self.process.start()
+        self.progress.set(0)
+        self.pct_var.set("0%")
+        self.start_btn.configure(state="disabled", fg_color=GREEN_DIM)
+        self.stop_btn.configure(state="normal")
+        self._set_status("轉錄中，請稍候...", ACCENT)
+        self.timer_start = time.time()
+        self.update_timer()
+        self.poll()
+
+    def stop(self):
+        if self.process and self.process.is_alive():
+            self.process.terminate()
+            self.process.join()
+            self.log_write("已手動停止")
+            self._set_status("已停止", SUBTEXT)
+            self.finish()
+        else:
+            self.ai_cancelled = True
+            self.log_write("正在取消，請稍候...")
+            self._set_status("取消中...", SUBTEXT)
+
+    def finish(self):
+        self.start_btn.configure(state="normal", fg_color=GREEN)
+        self.stop_btn.configure(state="disabled")
+        if self.timer_id:
+            self.root.after_cancel(self.timer_id)
+            self.timer_id = None
+        self.timer_start = None
+        self.process = None
+
+    # ── Transcript helpers ─────────────────────────
+    def load_transcript(self):
+        path = filedialog.askopenfilename(
+            filetypes=[("逐字稿", "*.txt"), ("所有檔案", "*.*")])
+        if not path:
+            return
+        speakers = self._find_speakers(path)
+        if speakers:
+            dlg = SpeakerNameDialog(self.root, speakers)
+            if dlg.result:
+                self._rename_speakers(path, dlg.result)
+        self.transcript_path = path
+        fname = os.path.basename(path)
+        self.loaded_file_var.set(f"已載入：{fname}")
+        self.correct_btn.configure(state="normal", fg_color=BLUE, text_color="white")
+        self.notes_btn.configure(state="normal", fg_color=BLUE, text_color="white")
+        self.export_srt_btn.configure(state="normal", fg_color=BLUE, text_color="white")
+        self.log_write(f"已載入逐字稿：{fname}")
+        self._set_status("已載入，請點選「校正逐字稿」或「產生摘要」", ACCENT)
+
+    def _resolve_output_path(self, path):
+        if not os.path.exists(path):
+            return path
+        overwrite = messagebox.askyesno(
+            "檔案已存在",
+            f"{os.path.basename(path)} 已存在，是否覆蓋？\n選「否」將自動另外命名。",
+            parent=self.root,
+        )
+        if overwrite:
+            return path
+        base, ext = os.path.splitext(path)
+        n = 2
+        while os.path.exists(f"{base}_{n}{ext}"):
+            n += 1
+        return f"{base}_{n}{ext}"
+
+    def _find_speakers(self, path):
+        with open(path, "r", encoding="utf-8") as f:
+            content = f.read()
+        return sorted(set(re.findall(r"SPEAKER_\d+", content)))
+
+    def _rename_speakers(self, path, name_map):
+        with open(path, "r", encoding="utf-8") as f:
+            content = f.read()
+        for original, new_name in name_map.items():
+            if original != new_name:
+                content = content.replace(original, new_name)
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(content)
+
+    # ── AI operations ──────────────────────────────
+    def correct_transcript(self):
+        if not self.transcript_path:
+            return
+        ai_engine = self.ai_engine_var.get()
+        api_key = self.ai_key_var.get().strip()
+        if not api_key and ai_engine not in ("ollama", "lmstudio"):
+            self.log_write(f"請輸入 {'Claude' if ai_engine == 'claude' else 'Gemini'} API Key")
+            return
+        base = self.transcript_path.rsplit("_transcript", 1)[0]
+        out_path = self._resolve_output_path(base + "_transcript_corrected.txt")
+        if ai_engine == "ollama":
+            cfg_key = "ollama_model"
+        elif ai_engine == "lmstudio":
+            cfg_key = "lmstudio_model"
+        elif ai_engine == "claude":
+            cfg_key = "anthropic_key"
+        else:
+            cfg_key = "gemini_key"
+        save_config({cfg_key: api_key})
+        self.cfg[cfg_key] = api_key
+
+        self.ai_cancelled = False
+        self.correct_btn.configure(state="disabled", fg_color=BLUE_DIM, text_color=SUBTEXT)
+        self.notes_btn.configure(state="disabled", fg_color=BLUE_DIM, text_color=SUBTEXT)
+        self.stop_btn.configure(state="normal")
+        self.log_write(f"正在校正逐字稿（{ai_engine.capitalize()}）...")
+        self._set_status("校正中...", ACCENT)
+        self._start_ai_progress()
+
+        def run():
+            try:
+                result = correct_transcript(self.transcript_path, ai_engine, api_key, out_path, context=self.prompt_var.get().strip())
+                self.root.after(0, lambda: self._correct_done(result))
+            except Exception as e:
+                err = str(e)
+                self.root.after(0, lambda: self._correct_error(err))
+
+        threading.Thread(target=run, daemon=True).start()
+
+    def _correct_done(self, out_path):
+        self._stop_ai_progress(success=not self.ai_cancelled)
+        self._reset_ai_buttons()
+        if self.ai_cancelled:
+            self.log_write("校正已取消")
+            self._set_status("已取消", SUBTEXT)
+            return
+        self.transcript_path = out_path
+        self.loaded_file_var.set(f"已載入：{os.path.basename(out_path)}")
+        self.log_write(f"校正完成：{os.path.basename(out_path)}")
+        self._set_status("校正完成！可繼續點選「產生摘要」", GREEN)
+
+    def _correct_error(self, err):
+        self._stop_ai_progress(success=False)
+        self._reset_ai_buttons()
+        self.log_write(f"校正錯誤：{err}")
+        self._set_status("校正失敗", RED)
+
+    def generate_notes(self):
+        if not self.transcript_path:
+            return
+        ai_engine = self.ai_engine_var.get()
+        api_key = self.ai_key_var.get().strip()
+        if not api_key and ai_engine not in ("ollama", "lmstudio"):
+            self.log_write(f"請輸入 {'Claude' if ai_engine == 'claude' else 'Gemini'} API Key")
+            return
+        default_out = self.transcript_path.replace("_transcript.txt", "_摘要.md")
+        if default_out == self.transcript_path:
+            default_out = self.transcript_path.rsplit(".", 1)[0] + "_摘要.md"
+        out_path = self._resolve_output_path(default_out)
+        if ai_engine == "ollama":
+            cfg_key = "ollama_model"
+        elif ai_engine == "lmstudio":
+            cfg_key = "lmstudio_model"
+        elif ai_engine == "claude":
+            cfg_key = "anthropic_key"
+        else:
+            cfg_key = "gemini_key"
+        save_config({cfg_key: api_key})
+        self.cfg[cfg_key] = api_key
+
+        self.ai_cancelled = False
+        self.correct_btn.configure(state="disabled", fg_color=BLUE_DIM, text_color=SUBTEXT)
+        self.notes_btn.configure(state="disabled", fg_color=BLUE_DIM, text_color=SUBTEXT)
+        self.stop_btn.configure(state="normal")
+        self.log_write(f"正在產生摘要（{ai_engine.capitalize()}）...")
+        self._set_status("產生摘要中...", ACCENT)
+        self._start_ai_progress()
+
+        def run():
+            try:
+                result = generate_summary(self.transcript_path, ai_engine, api_key, out_path, context=self.prompt_var.get().strip())
+                self.root.after(0, lambda: self._notes_done(result))
+            except Exception as e:
+                err = str(e)
+                self.root.after(0, lambda: self._notes_error(err))
+
+        self.notes_thread = threading.Thread(target=run, daemon=True)
+        self.notes_thread.start()
+
+    def export_srt(self):
+        if not self.transcript_path:
+            return
+        base = self.transcript_path.rsplit(".", 1)[0]
+        for suffix in ("_transcript_corrected", "_transcript"):
+            if base.endswith(suffix):
+                base = base[:-len(suffix)]
+                break
+        out_path = self._resolve_output_path(base + ".srt")
+
+        ai_engine = self.ai_engine_var.get()
+        api_key = self.ai_key_var.get().strip()
+
+        if api_key:
+            self.ai_cancelled = False
+            self.export_srt_btn.configure(state="disabled", fg_color=BLUE_DIM, text_color=SUBTEXT)
+            self.correct_btn.configure(state="disabled", fg_color=BLUE_DIM, text_color=SUBTEXT)
+            self.notes_btn.configure(state="disabled", fg_color=BLUE_DIM, text_color=SUBTEXT)
+            self.stop_btn.configure(state="normal")
+            self.log_write(f"正在用 AI 切割字幕（{ai_engine.capitalize()}）...")
+            self._set_status("AI 切割字幕中...", ACCENT)
+            self._start_ai_progress()
+
+            srt_source = base + ".srt"
+            use_srt = os.path.exists(srt_source)
+            if use_srt:
+                self.log_write("找到原始 SRT，使用毫秒精準時間戳...")
+            else:
+                self.log_write("未找到原始 SRT，改用 TXT 時間戳（整數秒）...")
+
+            def run():
+                try:
+                    if use_srt:
+                        segments = _parse_srt(srt_source)
+                        entries = _ai_cut_segments(segments, ai_engine, api_key)
+                        _write_srt(entries, out_path)
+                        result = out_path
+                    else:
+                        result = txt_to_srt_ai(self.transcript_path, ai_engine, api_key, out_path)
+                    self.root.after(0, lambda: self._export_srt_done(result))
+                except Exception as e:
+                    err = str(e)
+                    self.root.after(0, lambda: self._export_srt_error(err))
+
+            threading.Thread(target=run, daemon=True).start()
+        else:
+            try:
+                txt_to_srt(self.transcript_path, out_path)
+                self.log_write(f"SRT 已匯出：{os.path.basename(out_path)}")
+                self._set_status("SRT 匯出完成！", GREEN)
+            except Exception as e:
+                self.log_write(f"SRT 匯出錯誤：{e}")
+                self._set_status("SRT 匯出失敗", RED)
+
+    def _export_srt_done(self, out_path):
+        self._stop_ai_progress(success=not self.ai_cancelled)
+        self._reset_ai_buttons()
+        if self.ai_cancelled:
+            self.log_write("SRT 匯出已取消")
+            self._set_status("已取消", SUBTEXT)
+            return
+        self.log_write(f"SRT 已匯出：{os.path.basename(out_path)}")
+        self._set_status("SRT 匯出完成！", GREEN)
+
+    def _export_srt_error(self, err):
+        self._stop_ai_progress(success=False)
+        self._reset_ai_buttons()
+        self.log_write(f"SRT 匯出錯誤：{err}")
+        self._set_status("SRT 匯出失敗", RED)
+
+    def _notes_done(self, out_path):
+        self._stop_ai_progress(success=not self.ai_cancelled)
+        self._reset_ai_buttons()
+        if self.ai_cancelled:
+            self.log_write("產生摘要已取消")
+            self._set_status("已取消", SUBTEXT)
+            return
+        self.log_write(f"摘要已儲存：{os.path.basename(out_path)}")
+        self._set_status("摘要完成！", GREEN)
+
+    def _notes_error(self, err):
+        self._stop_ai_progress(success=False)
+        self._reset_ai_buttons()
+        self.log_write(f"摘要錯誤：{err}")
+        self._set_status("摘要失敗", RED)
+
+    def _reset_ai_buttons(self):
+        self.stop_btn.configure(state="disabled")
+        self.correct_btn.configure(state="normal", fg_color=BLUE, text_color="white")
+        self.notes_btn.configure(state="normal", fg_color=BLUE, text_color="white")
+        self.export_srt_btn.configure(state="normal", fg_color=BLUE, text_color="white")
+
+
+if __name__ == "__main__":
+    multiprocessing.freeze_support()
+    root = ctk.CTk()
+    app = TranscribeApp(root)
+    root.mainloop()
