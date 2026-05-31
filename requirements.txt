@@ -1,0 +1,13 @@
+customtkinter
+pillow
+requests
+opencc-python-reimplemented
+openai-whisper
+whisperx
+yt-dlp
+anthropic
+google-genai
+pyannote.audio
+torch
+torchvision
+torchaudio

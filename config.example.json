@@ -1,0 +1,7 @@
+{
+  "hf_token": "YOUR_HUGGING_FACE_TOKEN",
+  "gemini_key": "YOUR_GEMINI_API_KEY",
+  "anthropic_key": "YOUR_ANTHROPIC_API_KEY",
+  "lmstudio_model": "google/gemma-4-e4b",
+  "cookies_browser": "Cookies: Firefox"
+}
