@@ -556,33 +556,59 @@ def whisperx_worker(audio, out_dir, model_name, lang, hf_token, num_speakers, pr
 def _make_icon():
     try:
         from PIL import Image, ImageDraw
+        # 4× 超取樣後再縮小 → 線條與圓角都帶抗鋸齒，不再糊
+        SS = 4
         size = 256
-        img = Image.new("RGBA", (size, size), (30, 30, 30, 255))
+        S = size * SS
+        img = Image.new("RGBA", (S, S), (0, 0, 0, 0))
         draw = ImageDraw.Draw(img)
-        pad_x = size * 0.18
-        top_y = size * 0.16
-        bot_y = size * 0.82
-        cx    = size / 2
-        amp   = size * 0.038
-        freq  = 3.5
-        lw    = max(3, size // 20)
-        color = (74, 158, 255, 255)
-        steps = 300
 
-        def stroke(x0, y0, x1, y1):
-            dx, dy = x1 - x0, y1 - y0
-            L = math.sqrt(dx*dx + dy*dy)
-            px, py = -dy/L, dx/L
-            pts = []
-            for i in range(steps + 1):
-                t = i / steps
-                w = amp * math.sin(t * freq * 2 * math.pi) * (1 - t * 0.8)
-                pts.append((x0 + t*dx + px*w, y0 + t*dy + py*w))
-            draw.line(pts, fill=color, width=lw)
+        # ── 圓角方形底（macOS 風格 squircle，帶垂直漸層）──
+        radius = int(S * 0.22)
+        bg = Image.new("RGBA", (S, S), (0, 0, 0, 0))
+        bg_draw = ImageDraw.Draw(bg)
+        top, bot = (44, 46, 52), (24, 24, 26)
+        for y in range(S):
+            t = y / S
+            r = int(top[0] + (bot[0] - top[0]) * t)
+            g = int(top[1] + (bot[1] - top[1]) * t)
+            b = int(top[2] + (bot[2] - top[2]) * t)
+            bg_draw.line([(0, y), (S, y)], fill=(r, g, b, 255))
+        mask = Image.new("L", (S, S), 0)
+        ImageDraw.Draw(mask).rounded_rectangle([0, 0, S - 1, S - 1], radius=radius, fill=255)
+        img.paste(bg, (0, 0), mask)
 
-        stroke(pad_x, top_y, cx, bot_y)
-        stroke(size - pad_x, top_y, cx, bot_y)
-        return img
+        # ── 麥克風 ──
+        cx     = S / 2
+        accent = (74, 158, 255, 255)
+        lw     = max(3, int(S * 0.046))
+        half    = S * 0.115           # 麥克頭半寬
+        cap_top = S * 0.20
+        cap_bot = S * 0.48
+        # 麥克頭（圓角膠囊）
+        draw.rounded_rectangle(
+            [cx - half, cap_top, cx + half, cap_bot],
+            radius=half, fill=accent,
+        )
+        # U 形托架（弧，開口朝上讓麥克頭穿出）
+        cy_cap = (cap_top + cap_bot) / 2
+        r_arc  = half + S * 0.078
+        draw.arc(
+            [cx - r_arc, cy_cap - r_arc, cx + r_arc, cy_cap + r_arc],
+            start=-20, end=200, fill=accent, width=lw,
+        )
+        # 支桿
+        stem_top = cy_cap + r_arc
+        base_y   = S * 0.77
+        draw.line([(cx, stem_top), (cx, base_y)], fill=accent, width=lw)
+        # 底座
+        bw = S * 0.145
+        draw.rounded_rectangle(
+            [cx - bw, base_y - lw / 2, cx + bw, base_y + lw / 2],
+            radius=lw / 2, fill=accent,
+        )
+
+        return img.resize((size, size), Image.LANCZOS)
     except Exception:
         return None
 
@@ -712,6 +738,23 @@ class TranscribeApp:
 
         self._set_icon()
         self._build_ui()
+        self.root.after(120, self._bring_to_front)
+
+    def _bring_to_front(self):
+        """啟動時把視窗帶到前景並取得焦點（macOS 上 python 跑的視窗預設不會搶前景）。"""
+        try:
+            self.root.lift()
+            self.root.attributes("-topmost", True)
+            self.root.after(300, lambda: self.root.attributes("-topmost", False))
+            self.root.focus_force()
+        except Exception:
+            pass
+        if platform.system() == "Darwin":
+            try:
+                from AppKit import NSApplication
+                NSApplication.sharedApplication().activateIgnoringOtherApps_(True)
+            except Exception:
+                pass
 
     def _set_icon(self):
         img = _make_icon()
@@ -726,6 +769,20 @@ class TranscribeApp:
             self.root.iconphoto(True, *self._icon_photos)
         except Exception:
             pass
+
+        # macOS：iconphoto 吃不到 Dock，改用 NSApplication 直接設定 Dock 圖示
+        if platform.system() == "Darwin":
+            try:
+                import io
+                from AppKit import NSApplication, NSImage
+                from Foundation import NSData
+                buf = io.BytesIO()
+                img.save(buf, format="PNG")
+                data = NSData.dataWithBytes_length_(buf.getvalue(), len(buf.getvalue()))
+                ns_img = NSImage.alloc().initWithData_(data)
+                NSApplication.sharedApplication().setApplicationIconImage_(ns_img)
+            except Exception:
+                pass
 
     # ── Section divider ────────────────────────────
     def _section_divider(self, row, text, pady=(14, 6)):
@@ -790,7 +847,7 @@ class TranscribeApp:
         source.grid(row=1, column=0, pady=(16, 8))
 
         audio_col = ctk.CTkFrame(source, fg_color="transparent")
-        audio_col.pack(side="left", padx=28)
+        audio_col.pack(side="left", padx=28, anchor="n")
         audio_img = _make_audio_icon(40)
         self._audio_icon = ctk.CTkImage(
             light_image=audio_img, dark_image=audio_img, size=(40, 40)
@@ -807,7 +864,7 @@ class TranscribeApp:
                      font=F(FONT_UI, 12), width=165, anchor="center").pack(pady=(6, 0))
 
         yt_col = ctk.CTkFrame(source, fg_color="transparent")
-        yt_col.pack(side="left", padx=28)
+        yt_col.pack(side="left", padx=28, anchor="n")
         yt_img = _make_yt_icon(40)
         self._yt_icon = ctk.CTkImage(
             light_image=yt_img, dark_image=yt_img, size=(40, 40)
@@ -822,16 +879,16 @@ class TranscribeApp:
         self.yt_url_var = tk.StringVar()
         ctk.CTkEntry(
             yt_col, textvariable=self.yt_url_var,
-            placeholder_text="貼上網址...",
+            placeholder_text="貼上 YouTube 網址…",
             fg_color=SURFACE, text_color=TEXT,
             border_color=BORDER, border_width=1,
-            font=F(FONT_UI, 12), width=165,
+            font=F(FONT_UI, 12), width=336, height=32,
         ).pack(pady=(6, 0))
         self.cookies_browser_var = tk.StringVar(value=self.cfg.get("cookies_browser", "Cookies: 無"))
         ctk.CTkComboBox(
             yt_col, variable=self.cookies_browser_var,
             values=["Cookies: 無", "Cookies: Chrome", "Cookies: Edge", "Cookies: Firefox", "Cookies: Brave", "Cookies: Opera", "Cookies: Safari", "Cookies: 檔案", "Cookies: 選擇檔案..."],
-            width=165, state="readonly",
+            width=336, state="readonly",
             command=self._on_cookies_change,
             fg_color=SURFACE, text_color=TEXT, button_color=BORDER,
             button_hover_color=ACCENT, border_color=BORDER,
@@ -1212,6 +1269,23 @@ class TranscribeApp:
             self.timer_var.set(f"{elapsed//3600:02d}:{(elapsed%3600)//60:02d}:{elapsed%60:02d}")
             self.timer_id = self.root.after(1000, self.update_timer)
 
+    def _elapsed_str(self):
+        """目前已經過的時間字串（HH:MM:SS）。"""
+        if self.timer_start is None:
+            return self.timer_var.get()
+        el = int(time.time() - self.timer_start)
+        return f"{el//3600:02d}:{(el%3600)//60:02d}:{el%60:02d}"
+
+    def _stop_timer(self):
+        """停止計時並把標籤凍結在最終時間。"""
+        final = self._elapsed_str()
+        if self.timer_id:
+            self.root.after_cancel(self.timer_id)
+            self.timer_id = None
+        self.timer_start = None
+        self.timer_var.set(final)
+        return final
+
     # ── AI 進度動畫 ────────────────────────────────
     def _start_ai_progress(self):
         self.timer_start = time.time()
@@ -1238,10 +1312,7 @@ class TranscribeApp:
     def _stop_ai_progress(self, success=True):
         self._ai_anim_running = False
         self.progress.set(1.0 if success else 0.0)
-        if self.timer_id:
-            self.root.after_cancel(self.timer_id)
-            self.timer_id = None
-        self.timer_start = None
+        self._stop_timer()
 
     def _set_status(self, msg, color=SUBTEXT):
         self.status_label.configure(text=msg, text_color=color)
@@ -1265,11 +1336,13 @@ class TranscribeApp:
             pass
         try:
             status, data = self.result_q.get_nowait()
+            # 先停錶並記下總耗時，避免後續任何步驟丟例外導致計時器停不下來
+            elapsed = self._stop_timer()
             if status == "done":
                 self.progress.set(1.0)
                 self.pct_var.set("100%")
-                self.log_write(f"完成！儲存至：{data}")
-                self._set_status("轉錄完成！可繼續使用下方後製功能", GREEN)
+                self.log_write(f"完成！耗時 {elapsed}，儲存至：{data}")
+                self._set_status(f"轉錄完成（耗時 {elapsed}）！可繼續使用下方後製功能", GREEN)
                 speakers = self._find_speakers(data)
                 if speakers:
                     dlg = SpeakerNameDialog(self.root, speakers)
@@ -1282,7 +1355,7 @@ class TranscribeApp:
                 self.export_srt_btn.configure(state="normal", fg_color=BLUE, text_color="white")
             else:
                 self.log_write(f"錯誤：{data}")
-                self._set_status("發生錯誤", RED)
+                self._set_status(f"發生錯誤（耗時 {elapsed}）", RED)
             self.finish()
             return
         except Exception:
@@ -1372,10 +1445,7 @@ class TranscribeApp:
     def finish(self):
         self.start_btn.configure(state="normal", fg_color=GREEN)
         self.stop_btn.configure(state="disabled")
-        if self.timer_id:
-            self.root.after_cancel(self.timer_id)
-            self.timer_id = None
-        self.timer_start = None
+        self._stop_timer()
         self.process = None
 
     # ── Transcript helpers ─────────────────────────
@@ -1636,8 +1706,29 @@ def _enable_mac_clipboard(root):
             return "break"
         return handler
 
+    def _paste(event):
+        # macOS Tk 的 <<Paste>> 虛擬事件常因焦點時機失靈，
+        # 改成直接讀剪貼簿、手動插入（適用 Entry 與 Text），失敗才退回虛擬事件。
+        w = event.widget
+        try:
+            text = w.clipboard_get()
+        except Exception:
+            return "break"
+        try:
+            w.delete("sel.first", "sel.last")   # 有選取就先覆蓋
+        except Exception:
+            pass
+        try:
+            w.insert("insert", text)
+        except Exception:
+            try:
+                w.event_generate("<<Paste>>")
+            except Exception:
+                pass
+        return "break"
+
     root.bind_all("<Command-c>", _fire("<<Copy>>"))
-    root.bind_all("<Command-v>", _fire("<<Paste>>"))
+    root.bind_all("<Command-v>", _paste)
     root.bind_all("<Command-x>", _fire("<<Cut>>"))
     root.bind_all("<Command-a>", _fire("<<SelectAll>>"))
 

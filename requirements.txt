@@ -11,3 +11,4 @@ pyannote.audio
 torch
 torchvision
 torchaudio
+pyobjc-framework-Cocoa; sys_platform == "darwin"
