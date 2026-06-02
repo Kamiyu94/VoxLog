@@ -1055,11 +1055,16 @@ class TranscribeApp:
                     "postprocessors": [{"key": "FFmpegExtractAudio", "preferredcodec": "mp3"}],
                     "progress_hooks": [hook],
                     "quiet": True,
-                    "js_runtimes": {"node": {}, "deno": {}, "bun": {}, "quickjs": {}},
+                    # YouTube (2026)：預設網頁客戶端需要解 JS「n 簽章」挑戰，
+                    # 否則會出現 "Requested format is not available"。改用 android_vr
+                    # 客戶端可免挑戰、免 cookies 直接取得音訊格式，最穩定。
+                    "extractor_args": {"youtube": {"player_client": ["android_vr"]}},
                 }
+                # 決定要不要帶 cookies（公開影片通常不需要）
+                cookie_opt = None
                 if browser_selected == "Cookies: 檔案":
                     if self.cookies_file_path and os.path.exists(self.cookies_file_path):
-                        ydl_opts["cookiefile"] = self.cookies_file_path
+                        cookie_opt = ("cookiefile", self.cookies_file_path)
                 else:
                     browser_map = {
                         "Cookies: Chrome": "chrome",
@@ -1071,10 +1076,29 @@ class TranscribeApp:
                     }
                     browser_name = browser_map.get(browser_selected)
                     if browser_name:
-                        ydl_opts["cookiesfrombrowser"] = (browser_name,)
+                        cookie_opt = ("cookiesfrombrowser", (browser_name,))
 
-                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                    ydl.download([url])
+                def _do_download(opts):
+                    with yt_dlp.YoutubeDL(opts) as ydl:
+                        ydl.download([url])
+
+                try:
+                    opts = dict(ydl_opts)
+                    if cookie_opt:
+                        opts[cookie_opt[0]] = cookie_opt[1]
+                    _do_download(opts)
+                except Exception as e:
+                    msg = str(e).lower()
+                    # cookies 讀取失敗（如該瀏覽器未安裝 / 找不到設定檔）→ 自動改用無 cookies 重試
+                    cookie_failed = cookie_opt and any(
+                        k in msg for k in ("cookie", "could not find", "database", "profile")
+                    )
+                    if cookie_failed:
+                        self.root.after(0, lambda: self.log_write(
+                            "Cookies 讀取失敗（該瀏覽器可能未安裝），改用無 cookies 重新下載…"))
+                        _do_download(dict(ydl_opts))
+                    else:
+                        raise
                 self.root.after(0, lambda: self._yt_done(final_path[0]))
             except ImportError:
                 self.root.after(0, lambda: self._yt_error("請先安裝 yt-dlp：pip install yt-dlp"))
@@ -1597,8 +1621,30 @@ class TranscribeApp:
         self.export_srt_btn.configure(state="normal", fg_color=BLUE, text_color="white")
 
 
+def _enable_mac_clipboard(root):
+    """macOS：tkinter 預設的 Cmd+C / Cmd+V / Cmd+X / Cmd+A 常失效，
+    這裡手動把它們綁定到目前聚焦的輸入框。"""
+    if sys.platform != "darwin":
+        return
+
+    def _fire(event_name):
+        def handler(event):
+            try:
+                event.widget.event_generate(event_name)
+            except Exception:
+                pass
+            return "break"
+        return handler
+
+    root.bind_all("<Command-c>", _fire("<<Copy>>"))
+    root.bind_all("<Command-v>", _fire("<<Paste>>"))
+    root.bind_all("<Command-x>", _fire("<<Cut>>"))
+    root.bind_all("<Command-a>", _fire("<<SelectAll>>"))
+
+
 if __name__ == "__main__":
     multiprocessing.freeze_support()
     root = ctk.CTk()
     app = TranscribeApp(root)
+    _enable_mac_clipboard(root)
     root.mainloop()
