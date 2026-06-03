@@ -188,6 +188,15 @@ def _call_ai(prompt, ai_engine, api_key):
         )
         resp.raise_for_status()
         return resp.json()["choices"][0]["message"]["content"]
+    elif ai_engine == "openai":
+        from openai import OpenAI
+        model = load_config().get("openai_model", "gpt-4o")
+        client = OpenAI(api_key=api_key)
+        resp = client.chat.completions.create(
+            model=model,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        return resp.choices[0].message.content
     else:
         from google import genai
         client = genai.Client(api_key=api_key)
@@ -196,6 +205,59 @@ def _call_ai(prompt, ai_engine, api_key):
             contents=prompt,
         )
         return response.text
+
+
+# 各 AI 引擎在 config.json 對應的 key 欄位，以及顯示名稱
+_ENGINE_CFG_KEY = {
+    "claude": "anthropic_key",
+    "gemini": "gemini_key",
+    "openai": "openai_key",
+    "ollama": "ollama_model",
+    "lmstudio": "lmstudio_model",
+}
+_ENGINE_DISPLAY = {
+    "claude": "Claude",
+    "gemini": "Gemini",
+    "openai": "OpenAI",
+    "ollama": "Ollama",
+    "lmstudio": "LM Studio",
+}
+
+
+def verify_engine(ai_engine, api_key):
+    """以最小成本的呼叫驗證金鑰／連線，回傳 (ok: bool, message: str)。"""
+    if ai_engine == "claude":
+        import anthropic
+        anthropic.Anthropic(api_key=api_key).models.list(limit=1)
+        return True, "Claude 金鑰有效"
+    elif ai_engine == "openai":
+        from openai import OpenAI
+        OpenAI(api_key=api_key).models.list()
+        return True, "OpenAI 金鑰有效"
+    elif ai_engine == "gemini":
+        # 直接打 REST：SDK 在金鑰被拒時只丟出誤導性的「client has been closed」，
+        # 改用 REST 才能拿到「API key not valid」等可讀的真正原因。
+        import requests
+        r = requests.get(
+            "https://generativelanguage.googleapis.com/v1beta/models",
+            params={"key": api_key}, timeout=15,
+        )
+        if r.status_code == 200:
+            return True, "Gemini 金鑰有效"
+        try:
+            detail = r.json().get("error", {}).get("message", r.text[:200])
+        except Exception:
+            detail = r.text[:200]
+        raise RuntimeError(f"HTTP {r.status_code}: {detail}")
+    elif ai_engine == "ollama":
+        import requests
+        requests.get("http://localhost:11434/api/tags", timeout=10).raise_for_status()
+        return True, "Ollama 連線正常"
+    elif ai_engine == "lmstudio":
+        import requests
+        requests.get("http://localhost:1234/v1/models", timeout=10).raise_for_status()
+        return True, "LM Studio 連線正常"
+    return False, "未知引擎"
 
 
 _TXT_TS_PAT = re.compile(r'^\[(\d+):(\d+)\s*-->\s*(\d+):(\d+)\]\s*(.+)$')
@@ -964,30 +1026,46 @@ class TranscribeApp:
         )
         self.stop_btn.pack(side="left", padx=10)
 
-        # ── Row 5: AI 引擎 / Key ──
+        # ── Row 5: AI 引擎 / Key（分兩行：引擎一行、Key 一行）──
         ai_frame = ctk.CTkFrame(self.root, fg_color="transparent")
         ai_frame.grid(row=5, column=0, sticky="we", padx=20, pady=(4, 4))
-        ctk.CTkLabel(ai_frame, text="AI 引擎",
+
+        # 第一行：AI 引擎選擇
+        ai_engine_row = ctk.CTkFrame(ai_frame, fg_color="transparent")
+        ai_engine_row.pack(fill="x", anchor="w")
+        ctk.CTkLabel(ai_engine_row, text="AI 引擎",
                      fg_color="transparent", text_color=TEXT,
                      font=F(FONT_UI, 14), width=72, anchor="e").pack(side="left", padx=(0, 8))
         self.ai_engine_var = tk.StringVar(value="gemini")
-        for val, label in [("claude", "Claude"), ("gemini", "Gemini"), ("ollama", "Ollama"), ("lmstudio", "LM Studio")]:
+        for val, label in [("claude", "Claude"), ("gemini", "Gemini"), ("openai", "ChatGPT"), ("ollama", "Ollama"), ("lmstudio", "LM Studio")]:
             ctk.CTkRadioButton(
-                ai_frame, text=label, variable=self.ai_engine_var,
+                ai_engine_row, text=label, variable=self.ai_engine_var,
                 value=val, command=self._on_ai_engine_change,
                 text_color=TEXT, fg_color=ACCENT, hover_color=ACCENT,
                 font=F(FONT_UI, 14),
             ).pack(side="left", padx=(0, 12))
-        self.ai_key_label = ctk.CTkLabel(ai_frame, text="Gemini Key",
+
+        # 第二行：API Key 輸入
+        ai_key_row = ctk.CTkFrame(ai_frame, fg_color="transparent")
+        ai_key_row.pack(fill="x", anchor="w", pady=(6, 0))
+        self.ai_key_label = ctk.CTkLabel(ai_key_row, text="Gemini Key",
                                           fg_color="transparent", text_color=SUBTEXT,
-                                          font=F(FONT_UI, 13))
-        self.ai_key_label.pack(side="left", padx=(8, 6))
+                                          font=F(FONT_UI, 13), width=72, anchor="e")
+        self.ai_key_label.pack(side="left", padx=(0, 8))
         self.ai_key_var = tk.StringVar(value=self.cfg.get("gemini_key", ""))
-        self.ai_key_entry = ctk.CTkEntry(ai_frame, textvariable=self.ai_key_var, width=240, show="*",
+        self.verify_btn = ctk.CTkButton(
+            ai_key_row, text="驗證", command=self._verify_api,
+            font=F(FONT_UI, 13, weight="bold"), width=64,
+        )
+        self.verify_btn.pack(side="right", padx=(8, 0))
+        self.ai_key_entry = ctk.CTkEntry(ai_key_row, textvariable=self.ai_key_var, show="*",
                                          fg_color=SURFACE, text_color=TEXT,
                                          border_color=BORDER, border_width=1,
                                          font=F(FONT_UI, 13))
-        self.ai_key_entry.pack(side="left")
+        self.ai_key_entry.pack(side="left", fill="x", expand=True, padx=(0, 4))
+        # 有填入值時才把「驗證」鈕從暗色轉成藍色，明確提示可按
+        self.ai_key_var.trace_add("write", self._update_verify_btn)
+        self._update_verify_btn()
 
         # ── Row 6: 後製按鈕 ──
         post_outer = ctk.CTkFrame(self.root, fg_color="transparent")
@@ -1190,9 +1268,15 @@ class TranscribeApp:
 
     def _on_ai_engine_change(self):
         engine = self.ai_engine_var.get()
+        if hasattr(self, "verify_btn"):  # 切換引擎時清掉上次的驗證結果
+            self.verify_btn.configure(text="驗證")
         if engine == "claude":
             self.ai_key_label.configure(text="Claude Key")
             self.ai_key_var.set(self.cfg.get("anthropic_key", ""))
+            self.ai_key_entry.configure(show="*")
+        elif engine == "openai":
+            self.ai_key_label.configure(text="OpenAI Key")
+            self.ai_key_var.set(self.cfg.get("openai_key", ""))
             self.ai_key_entry.configure(show="*")
         elif engine == "ollama":
             self.ai_key_label.configure(text="Model 名稱")
@@ -1206,6 +1290,49 @@ class TranscribeApp:
             self.ai_key_label.configure(text="Gemini Key")
             self.ai_key_var.set(self.cfg.get("gemini_key", ""))
             self.ai_key_entry.configure(show="*")
+
+    def _update_verify_btn(self, *_):
+        """依輸入框是否有值切換「驗證」鈕外觀：有值→藍色醒目，空白→暗色。"""
+        if not hasattr(self, "verify_btn"):
+            return
+        if self.ai_key_var.get().strip():
+            self.verify_btn.configure(fg_color=ACCENT, hover_color=BLUE, text_color="white")
+        else:
+            self.verify_btn.configure(fg_color=SURFACE, hover_color=BORDER, text_color=SUBTEXT)
+
+    def _verify_api(self):
+        ai_engine = self.ai_engine_var.get()
+        api_key = self.ai_key_var.get().strip()
+        is_local = ai_engine in ("ollama", "lmstudio")
+        if not api_key and not is_local:
+            self.log_write(f"請先輸入 {_ENGINE_DISPLAY.get(ai_engine, ai_engine)} API Key")
+            return
+        self.verify_btn.configure(state="disabled", text="驗證中")
+        self._set_status(f"正在驗證 {_ENGINE_DISPLAY.get(ai_engine, ai_engine)}...", ACCENT)
+
+        def run():
+            try:
+                ok, msg = verify_engine(ai_engine, api_key)
+            except Exception as e:
+                ok, msg = False, str(e)
+            self.root.after(0, lambda: self._verify_done(ai_engine, api_key, is_local, ok, msg))
+
+        threading.Thread(target=run, daemon=True).start()
+
+    def _verify_done(self, ai_engine, api_key, is_local, ok, msg):
+        self.verify_btn.configure(state="normal", text="驗證")
+        if ok:
+            self.verify_btn.configure(fg_color=GREEN_DIM, text_color="white")
+            self.log_write(f"✓ {msg}")
+            self._set_status(f"✓ {msg}", GREEN)
+            if not is_local:  # 驗證通過順手存下金鑰
+                cfg_key = _ENGINE_CFG_KEY[ai_engine]
+                save_config({cfg_key: api_key})
+                self.cfg[cfg_key] = api_key
+        else:
+            self._update_verify_btn()
+            self.log_write(f"✗ 驗證失敗：{msg}")
+            self._set_status("驗證失敗", RED)
 
     def _on_cookies_change(self, choice):
         if choice == "Cookies: 選擇檔案...":
@@ -1451,7 +1578,9 @@ class TranscribeApp:
     # ── Transcript helpers ─────────────────────────
     def load_transcript(self):
         path = filedialog.askopenfilename(
-            filetypes=[("逐字稿", "*.txt"), ("所有檔案", "*.*")])
+            filetypes=[("逐字稿 / Markdown 文件", "*.txt *.md *.markdown"),
+                       ("Markdown 文件", "*.md *.markdown"),
+                       ("所有檔案", "*.*")])
         if not path:
             return
         speakers = self._find_speakers(path)
@@ -1505,18 +1634,11 @@ class TranscribeApp:
         ai_engine = self.ai_engine_var.get()
         api_key = self.ai_key_var.get().strip()
         if not api_key and ai_engine not in ("ollama", "lmstudio"):
-            self.log_write(f"請輸入 {'Claude' if ai_engine == 'claude' else 'Gemini'} API Key")
+            self.log_write(f"請輸入 {_ENGINE_DISPLAY.get(ai_engine, ai_engine)} API Key")
             return
         base = self.transcript_path.rsplit("_transcript", 1)[0]
         out_path = self._resolve_output_path(base + "_transcript_corrected.txt")
-        if ai_engine == "ollama":
-            cfg_key = "ollama_model"
-        elif ai_engine == "lmstudio":
-            cfg_key = "lmstudio_model"
-        elif ai_engine == "claude":
-            cfg_key = "anthropic_key"
-        else:
-            cfg_key = "gemini_key"
+        cfg_key = _ENGINE_CFG_KEY[ai_engine]
         save_config({cfg_key: api_key})
         self.cfg[cfg_key] = api_key
 
@@ -1524,7 +1646,7 @@ class TranscribeApp:
         self.correct_btn.configure(state="disabled", fg_color=BLUE_DIM, text_color=SUBTEXT)
         self.notes_btn.configure(state="disabled", fg_color=BLUE_DIM, text_color=SUBTEXT)
         self.stop_btn.configure(state="normal")
-        self.log_write(f"正在校正逐字稿（{ai_engine.capitalize()}）...")
+        self.log_write(f"正在校正逐字稿（{_ENGINE_DISPLAY.get(ai_engine, ai_engine)}）...")
         self._set_status("校正中...", ACCENT)
         self._start_ai_progress()
 
@@ -1562,20 +1684,13 @@ class TranscribeApp:
         ai_engine = self.ai_engine_var.get()
         api_key = self.ai_key_var.get().strip()
         if not api_key and ai_engine not in ("ollama", "lmstudio"):
-            self.log_write(f"請輸入 {'Claude' if ai_engine == 'claude' else 'Gemini'} API Key")
+            self.log_write(f"請輸入 {_ENGINE_DISPLAY.get(ai_engine, ai_engine)} API Key")
             return
         default_out = self.transcript_path.replace("_transcript.txt", "_摘要.md")
         if default_out == self.transcript_path:
             default_out = self.transcript_path.rsplit(".", 1)[0] + "_摘要.md"
         out_path = self._resolve_output_path(default_out)
-        if ai_engine == "ollama":
-            cfg_key = "ollama_model"
-        elif ai_engine == "lmstudio":
-            cfg_key = "lmstudio_model"
-        elif ai_engine == "claude":
-            cfg_key = "anthropic_key"
-        else:
-            cfg_key = "gemini_key"
+        cfg_key = _ENGINE_CFG_KEY[ai_engine]
         save_config({cfg_key: api_key})
         self.cfg[cfg_key] = api_key
 
@@ -1583,7 +1698,7 @@ class TranscribeApp:
         self.correct_btn.configure(state="disabled", fg_color=BLUE_DIM, text_color=SUBTEXT)
         self.notes_btn.configure(state="disabled", fg_color=BLUE_DIM, text_color=SUBTEXT)
         self.stop_btn.configure(state="normal")
-        self.log_write(f"正在產生摘要（{ai_engine.capitalize()}）...")
+        self.log_write(f"正在產生摘要（{_ENGINE_DISPLAY.get(ai_engine, ai_engine)}）...")
         self._set_status("產生摘要中...", ACCENT)
         self._start_ai_progress()
 
@@ -1617,7 +1732,7 @@ class TranscribeApp:
             self.correct_btn.configure(state="disabled", fg_color=BLUE_DIM, text_color=SUBTEXT)
             self.notes_btn.configure(state="disabled", fg_color=BLUE_DIM, text_color=SUBTEXT)
             self.stop_btn.configure(state="normal")
-            self.log_write(f"正在用 AI 切割字幕（{ai_engine.capitalize()}）...")
+            self.log_write(f"正在用 AI 切割字幕（{_ENGINE_DISPLAY.get(ai_engine, ai_engine)}）...")
             self._set_status("AI 切割字幕中...", ACCENT)
             self._start_ai_progress()
 
