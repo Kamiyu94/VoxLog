@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="color-scheme" content="dark">
+<title>VoxLog · Windows 安裝指南</title>
+<style>
+  :root{
+    --bg:#1E1E1E; --surface:#2A2A2A; --surface2:#242424; --border:#3A3A3A;
+    --text:#E8E8E8; --subtext:#9A9A9A; --accent:#4A9EFF; --green:#27AE60;
+    --amber:#E0A93B; --red:#E74C3C; --code:#D7E3F4;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  html{scroll-behavior:smooth;}
+  body{
+    margin:0; background:var(--bg); color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft JhengHei","PingFang TC",sans-serif;
+    line-height:1.7; font-size:17px;
+    padding:0 0 64px;
+    -webkit-text-size-adjust:100%;
+  }
+  .wrap{max-width:680px; margin:0 auto; padding:0 18px;}
+  header{
+    padding:30px 18px 22px; text-align:center;
+    background:linear-gradient(180deg,#222 0%,var(--bg) 100%);
+    border-bottom:1px solid var(--border);
+  }
+  header .logo{font-size:30px; font-weight:800; letter-spacing:.5px;}
+  header .logo .mic{color:var(--accent);}
+  header .sub{color:var(--subtext); font-size:14px; margin-top:6px;}
+  header .platform{
+    display:inline-block; margin-top:14px; padding:5px 14px;
+    background:var(--surface); border:1px solid var(--border); border-radius:999px;
+    font-size:13px; color:var(--accent); font-weight:600;
+  }
+
+  h2{
+    font-size:20px; margin:34px 0 12px; padding-top:10px;
+    display:flex; align-items:center; gap:10px;
+  }
+  .num{
+    flex:0 0 30px; width:30px; height:30px; border-radius:50%;
+    background:var(--accent); color:#fff; font-size:15px; font-weight:700;
+    display:inline-flex; align-items:center; justify-content:center;
+  }
+  p{margin:10px 0;}
+  .muted{color:var(--subtext); font-size:14.5px;}
+  strong{color:#fff;}
+  a{color:var(--accent); text-decoration:none;}
+  a:active{opacity:.6;}
+
+  .card{
+    background:var(--surface2); border:1px solid var(--border);
+    border-radius:14px; padding:16px 16px 4px; margin:10px 0 4px;
+  }
+
+  /* 程式碼區塊 + 複製鈕 */
+  .code{
+    position:relative; background:#161616; border:1px solid var(--border);
+    border-radius:12px; margin:12px 0; overflow:hidden;
+  }
+  .code pre{
+    margin:0; padding:14px 52px 14px 14px; overflow-x:auto;
+    font-family:"SF Mono",Consolas,"Cascadia Code",monospace;
+    font-size:14.5px; color:var(--code); line-height:1.6;
+    white-space:pre; -webkit-overflow-scrolling:touch;
+  }
+  .copy{
+    position:absolute; top:8px; right:8px;
+    background:var(--surface); color:var(--text); border:1px solid var(--border);
+    border-radius:8px; padding:7px 11px; font-size:12.5px; font-weight:600;
+    cursor:pointer; transition:.15s;
+  }
+  .copy:active{transform:scale(.93);}
+  .copy.done{background:var(--green); color:#fff; border-color:var(--green);}
+
+  /* 提示框 */
+  .note{
+    border-radius:12px; padding:12px 14px; margin:14px 0;
+    font-size:14.5px; border:1px solid;
+  }
+  .note .ic{font-weight:700; margin-right:6px;}
+  .note.tip{background:rgba(74,158,255,.08); border-color:rgba(74,158,255,.35);}
+  .note.warn{background:rgba(224,169,59,.08); border-color:rgba(224,169,59,.4);}
+  .note.warn .ic{color:var(--amber);}
+  .note.tip .ic{color:var(--accent);}
+
+  .check{
+    background:rgba(39,174,96,.1); border:1px solid rgba(39,174,96,.4);
+    border-radius:12px; padding:14px; margin:16px 0; font-size:15px;
+  }
+  .check b{color:var(--green);}
+
+  kbd{
+    background:var(--surface); border:1px solid var(--border); border-bottom-width:2px;
+    border-radius:6px; padding:1px 7px; font-size:13px; font-family:inherit;
+  }
+  hr{border:none; border-top:1px solid var(--border); margin:30px 0;}
+  footer{text-align:center; color:var(--subtext); font-size:13px; margin-top:30px;}
+  .toc{
+    background:var(--surface2); border:1px solid var(--border); border-radius:14px;
+    padding:8px 6px; margin:18px 0;
+  }
+  .toc a{
+    display:block; padding:11px 14px; color:var(--text); font-size:15.5px;
+    border-bottom:1px solid var(--border);
+  }
+  .toc a:last-child{border-bottom:none;}
+  .toc a .n{color:var(--accent); font-weight:700; margin-right:10px;}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo"><span class="mic">🎙</span> VoxLog</div>
+  <div class="sub">語音轉文字 · AI 摘要工具</div>
+  <div class="platform">🪟 Windows 安裝指南</div>
+</header>
+
+<div class="wrap">
+
+  <p class="muted">照著下面 4 步做即可。指令右上角的「複製」可一鍵複製,貼到終端機(命令提示字元 / PowerShell)按 Enter 執行。</p>
+
+  <div class="toc">
+    <a href="#s1"><span class="n">1</span>安裝 Python</a>
+    <a href="#s2"><span class="n">2</span>安裝 FFmpeg</a>
+    <a href="#s3"><span class="n">3</span>下載專案</a>
+    <a href="#s4"><span class="n">4</span>安裝套件並啟動</a>
+    <a href="#s5"><span class="n">5</span>開起來之後</a>
+  </div>
+
+  <!-- 1 -->
+  <h2 id="s1"><span class="num">1</span>安裝 Python</h2>
+  <p>到官網下載 <strong>Python 3.11 或 3.12</strong>:</p>
+  <p><a href="https://www.python.org/downloads/" target="_blank" rel="noopener">👉 python.org/downloads</a></p>
+  <div class="note warn">
+    <span class="ic">⚠️ 最重要</span>安裝第一個畫面,務必勾選
+    <strong>☑ Add python.exe to PATH</strong>,再按 Install。沒勾的話後面指令全部會失敗。
+  </div>
+  <div class="note tip">
+    <span class="ic">💡</span>Windows 版 Python 已內含圖形介面所需的 tkinter,<strong>不用</strong>另外裝其他東西。
+  </div>
+
+  <!-- 2 -->
+  <h2 id="s2"><span class="num">2</span>安裝 FFmpeg</h2>
+  <p>開啟 <strong>PowerShell</strong>(開始選單搜尋 "PowerShell"),貼上這行:</p>
+  <div class="code">
+    <button class="copy">複製</button>
+    <pre>winget install Gyan.FFmpeg</pre>
+  </div>
+  <div class="note tip">
+    <span class="ic">💡</span>裝完請<strong>關掉終端機再重開</strong>,讓設定生效。程式也會自動尋找 FFmpeg,所以裝了就行。
+  </div>
+
+  <!-- 3 -->
+  <h2 id="s3"><span class="num">3</span>下載專案</h2>
+  <p><strong>方法 A — 有安裝 git:</strong></p>
+  <div class="code">
+    <button class="copy">複製</button>
+    <pre>git clone https://github.com/Kamiyu94/VoxLog.git
+cd VoxLog</pre>
+  </div>
+  <p><strong>方法 B — 沒有 git(最簡單):</strong></p>
+  <p class="muted">打開 <a href="https://github.com/Kamiyu94/VoxLog" target="_blank" rel="noopener">GitHub 專案頁</a> → 綠色 <kbd>&lt;&gt; Code</kbd> 按鈕 → <kbd>Download ZIP</kbd> → 解壓縮 → 進到資料夾,在上方<strong>網址列輸入 <kbd>cmd</kbd> 按 Enter</strong>,就會在這個資料夾開啟終端機。</p>
+
+  <!-- 4 -->
+  <h2 id="s4"><span class="num">4</span>安裝套件並啟動</h2>
+  <p>在專案資料夾的終端機,依序執行:</p>
+  <div class="code">
+    <button class="copy">複製</button>
+    <pre>python -m venv venv
+venv\Scripts\activate
+pip install -r requirements.txt
+python transcribe_gui.py</pre>
+  </div>
+  <div class="note warn">
+    <span class="ic">⏳</span><code>pip install</code> 會下載 <strong>torch 約 2GB</strong>,網路要穩、請耐心等(可能 10 分鐘以上)。這是語音轉錄必需的。
+  </div>
+  <p class="muted">之後要再次開啟程式,只要在資料夾終端機執行:</p>
+  <div class="code">
+    <button class="copy">複製</button>
+    <pre>venv\Scripts\activate
+python transcribe_gui.py</pre>
+  </div>
+
+  <!-- 5 -->
+  <h2 id="s5"><span class="num">5</span>開起來之後</h2>
+  <div class="card">
+    <p style="margin-top:4px;">程式啟動瞬間會<strong>自動建立設定檔</strong>,你不用碰任何檔案。接著在介面上:</p>
+    <p>① 選 AI 引擎(<strong>ChatGPT / Gemini / Claude</strong>)<br>
+       ② 在 Key 欄位<strong>貼上自己的 API Key</strong><br>
+       ③ 按 <strong>「驗證」</strong>,變綠就代表成功(會自動存檔)<br>
+       ④ 載入音檔或 <strong>.md / 逐字稿</strong> → 開始轉錄、校正、產生摘要</p>
+  </div>
+
+  <div class="check">
+    <b>✓ 完成!</b> 之後每次使用都從第 4 步最後那兩行(啟動指令)開始即可。
+  </div>
+
+  <hr>
+  <p class="muted"><strong>小提醒:</strong>若電腦有 NVIDIA 顯卡,語音轉錄會快很多(預設是 CPU 版,較慢但可用)。若只想用「載入 .md 做摘要」這類 AI 功能,其實不裝 torch 也能開,但要完整語音轉錄就得照第 4 步裝齊。</p>
+
+  <footer>
+    VoxLog · Kamiyu Lab<br>
+    遇到問題可參考 repo 內的 <code>README.md</code> 與 <code>MACOS_SETUP.md</code>
+  </footer>
+
+</div>
+
+<script>
+  document.querySelectorAll('.copy').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var code = btn.parentElement.querySelector('pre').innerText;
+      var done = function(){
+        btn.textContent = '已複製 ✓'; btn.classList.add('done');
+        setTimeout(function(){ btn.textContent = '複製'; btn.classList.remove('done'); }, 1500);
+      };
+      if (navigator.clipboard && navigator.clipboard.writeText){
+        navigator.clipboard.writeText(code).then(done, function(){ fallback(code, done); });
+      } else { fallback(code, done); }
+    });
+  });
+  function fallback(text, cb){
+    var ta = document.createElement('textarea');
+    ta.value = text; ta.style.position='fixed'; ta.style.opacity='0';
+    document.body.appendChild(ta); ta.select();
+    try{ document.execCommand('copy'); cb(); }catch(e){}
+    document.body.removeChild(ta);
+  }
+</script>
+</body>
+</html>
