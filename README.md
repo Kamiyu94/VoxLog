@@ -14,13 +14,14 @@ VoxLog 是一個具備圖形化介面 (GUI) 的語音轉文字與 AI 輔助處�
 > macOS 在這個 AI 語音專案上有幾個必踩的坑（系統內建 Python 會讓 GUI 崩潰、
 > 部分套件與最新版 macOS / FFmpeg 不相容），照下面步驟可一次避開。
 
-1. **下載專案與準備設定檔**
+1. **下載專案**
    ```bash
    git clone https://github.com/Kamiyu94/VoxLog.git
    cd VoxLog
-   cp config.example.json config.json
    ```
-   *(請打開 `config.json`，並將您的 API Keys 填入對應的欄位)*
+   > 💡 **不必手動建立 `config.json`**：第一次啟動程式時會自動產生一份空白設定檔，
+   > 你只要在 GUI 裡選好 AI 引擎、貼上 API Key、按「驗證」通過後就會自動存檔。
+   > （想手動填也可以：`cp config.example.json config.json` 後編輯。）
 
 2. **安裝 FFmpeg 與正確的 Python（重要）**
    ```bash
@@ -105,13 +106,13 @@ VoxLog 是一個具備圖形化介面 (GUI) 的語音轉文字與 AI 輔助處�
 ---
 
 ### 🪟 Windows
-1. **下載專案與準備設定檔**
+1. **下載專案**
    ```cmd
    git clone https://github.com/Kamiyu94/VoxLog.git
    cd VoxLog
-   copy config.example.json config.json
    ```
-   *(請打開 `config.json`，並將您的 API Keys 填入對應的欄位)*
+   > 💡 **不必手動建立 `config.json`**：第一次啟動程式時會自動產生空白設定檔，
+   > 直接在 GUI 貼上 API Key、按「驗證」即可自動存檔。
 
 2. **安裝 FFmpeg**
    如果尚未安裝，可透過 PowerShell 的 winget 指令安裝：

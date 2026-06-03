@@ -120,6 +120,28 @@ def save_config(data):
         json.dump(cfg, f, indent=2)
 
 
+def ensure_config():
+    """首次啟動若沒有 config.json，自動建立一份空白設定（金鑰留空、保留欄位與預設值），
+    使用者完全不必手動建檔，直接在 GUI 填入金鑰按「驗證」即可存檔。"""
+    if os.path.exists(CONFIG_PATH):
+        return
+    template = {}
+    example_path = os.path.join(os.path.dirname(CONFIG_PATH), "config.example.json")
+    try:
+        with open(example_path, "r", encoding="utf-8") as f:
+            example = json.load(f)
+        for k, v in example.items():
+            # placeholder（YOUR_xxx）清空，其餘預設值（如 openai_model）保留
+            template[k] = "" if isinstance(v, str) and v.startswith("YOUR_") else v
+    except Exception:
+        template = {}
+    try:
+        with open(CONFIG_PATH, "w", encoding="utf-8") as f:
+            json.dump(template, f, indent=2, ensure_ascii=False)
+    except Exception:
+        pass
+
+
 def _format_srt_time(seconds):
     h = int(seconds // 3600)
     m = int((seconds % 3600) // 60)
@@ -795,6 +817,7 @@ class TranscribeApp:
         self.audio_var = tk.StringVar()
         self.out_var = tk.StringVar()
         self.srt_var = tk.BooleanVar(value=True)
+        ensure_config()  # 首次啟動自動建立空白 config.json，小白不必手動建檔
         self.cfg = load_config()
         self.cookies_file_path = self.cfg.get("cookies_file_path", "")
 
