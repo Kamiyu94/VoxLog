@@ -14,9 +14,18 @@ import customtkinter as ctk
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("blue")
 
-_WIN_FFMPEG = r"C:\Users\kamiy\AppData\Local\Microsoft\WinGet\Packages\Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe\ffmpeg-8.1.1-full_build\bin"
 if platform.system() == "Windows":
-    os.environ["PATH"] += ";" + _WIN_FFMPEG
+    # 把 winget 安裝的 ffmpeg 加進 PATH。原本寫死成特定使用者的路徑，
+    # 換一台電腦（不同使用者名稱／ffmpeg 版本）就失效，這裡改成自動尋找。
+    import glob
+    _ff_pattern = os.path.join(
+        os.environ.get("LOCALAPPDATA", ""),
+        "Microsoft", "WinGet", "Packages", "Gyan.FFmpeg*", "**", "bin",
+    )
+    for _d in glob.glob(_ff_pattern, recursive=True):
+        if os.path.isfile(os.path.join(_d, "ffmpeg.exe")):
+            os.environ["PATH"] += os.pathsep + _d
+            break
 
 FONT_UI = "Microsoft JhengHei" if platform.system() == "Windows" else "PingFang TC"
 
