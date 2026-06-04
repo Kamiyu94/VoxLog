@@ -96,6 +96,10 @@
     background:var(--surface); border:1px solid var(--border); border-bottom-width:2px;
     border-radius:6px; padding:1px 7px; font-size:13px; font-family:inherit;
   }
+  .big{
+    display:inline-block; background:var(--accent); color:#fff;
+    border-radius:8px; padding:2px 10px; font-weight:700; font-size:15.5px;
+  }
   hr{border:none; border-top:1px solid var(--border); margin:30px 0;}
   footer{text-align:center; color:var(--subtext); font-size:13px; margin-top:30px;}
   .toc{
@@ -120,14 +124,14 @@
 
 <div class="wrap">
 
-  <p class="muted">照著下面 4 步做即可。指令右上角的「複製」可一鍵複製,貼到終端機(命令提示字元 / PowerShell)按 Enter 執行。</p>
+  <p class="muted">這版超簡單：<strong>裝好 Python</strong>,然後<strong>雙擊一個檔案</strong>,其餘(FFmpeg、套件、啟動)全自動。照下面做即可。</p>
 
   <div class="toc">
     <a href="#s1"><span class="n">1</span>安裝 Python</a>
-    <a href="#s2"><span class="n">2</span>安裝 FFmpeg</a>
-    <a href="#s3"><span class="n">3</span>下載專案</a>
-    <a href="#s4"><span class="n">4</span>安裝套件並啟動</a>
-    <a href="#s5"><span class="n">5</span>開起來之後</a>
+    <a href="#s2"><span class="n">2</span>下載專案</a>
+    <a href="#s3"><span class="n">3</span>雙擊 VoxLog.bat(全自動)</a>
+    <a href="#s4"><span class="n">4</span>建一個桌面捷徑</a>
+    <a href="#s5"><span class="n">5</span>填 API Key 開始用</a>
   </div>
 
   <!-- 1 -->
@@ -136,74 +140,74 @@
   <p><a href="https://www.python.org/downloads/" target="_blank" rel="noopener">👉 python.org/downloads</a></p>
   <div class="note warn">
     <span class="ic">⚠️ 最重要</span>安裝第一個畫面,務必勾選
-    <strong>☑ Add python.exe to PATH</strong>,再按 Install。沒勾的話後面指令全部會失敗。
+    <strong>☑ Add python.exe to PATH</strong>,再按 Install。沒勾的話下一步會失敗。
   </div>
   <div class="note tip">
-    <span class="ic">💡</span>Windows 版 Python 已內含圖形介面所需的 tkinter,<strong>不用</strong>另外裝其他東西。
+    <span class="ic">💡</span>Windows 版 Python 已內含圖形介面所需的元件,<strong>不用</strong>另外裝其他東西。這是唯一需要手動裝的;之後 FFmpeg 跟一堆套件都會自動處理。
   </div>
 
   <!-- 2 -->
-  <h2 id="s2"><span class="num">2</span>安裝 FFmpeg</h2>
-  <p>開啟 <strong>PowerShell</strong>(開始選單搜尋 "PowerShell"),貼上這行:</p>
+  <h2 id="s2"><span class="num">2</span>下載專案</h2>
+  <p><strong>最簡單(免安裝 git):</strong></p>
+  <p class="muted">打開 <a href="https://github.com/Kamiyu94/VoxLog" target="_blank" rel="noopener">GitHub 專案頁</a> → 綠色 <kbd>&lt;&gt; Code</kbd> 按鈕 → <kbd>Download ZIP</kbd> → <strong>解壓縮</strong>到你想放的地方(例如「文件」資料夾)。</p>
+  <div class="note warn">
+    <span class="ic">📁</span>記住這個 <strong>VoxLog 資料夾</strong>放在哪、<strong>別把裡面的檔案拆開搬</strong>。整包要待在一起才能跑。
+  </div>
+  <p class="muted" style="margin-top:14px;"><strong>(進階)有裝 git 的話也可以:</strong></p>
   <div class="code">
     <button class="copy">複製</button>
-    <pre>winget install Gyan.FFmpeg</pre>
-  </div>
-  <div class="note tip">
-    <span class="ic">💡</span>裝完請<strong>關掉終端機再重開</strong>,讓設定生效。程式也會自動尋找 FFmpeg,所以裝了就行。
+    <pre>git clone https://github.com/Kamiyu94/VoxLog.git</pre>
   </div>
 
   <!-- 3 -->
-  <h2 id="s3"><span class="num">3</span>下載專案</h2>
-  <p><strong>方法 A — 有安裝 git:</strong></p>
-  <div class="code">
-    <button class="copy">複製</button>
-    <pre>git clone https://github.com/Kamiyu94/VoxLog.git
-cd VoxLog</pre>
-  </div>
-  <p><strong>方法 B — 沒有 git(最簡單):</strong></p>
-  <p class="muted">打開 <a href="https://github.com/Kamiyu94/VoxLog" target="_blank" rel="noopener">GitHub 專案頁</a> → 綠色 <kbd>&lt;&gt; Code</kbd> 按鈕 → <kbd>Download ZIP</kbd> → 解壓縮 → 進到資料夾,在上方<strong>網址列輸入 <kbd>cmd</kbd> 按 Enter</strong>,就會在這個資料夾開啟終端機。</p>
-
-  <!-- 4 -->
-  <h2 id="s4"><span class="num">4</span>安裝套件並啟動</h2>
-  <p>在專案資料夾的終端機,依序執行:</p>
-  <div class="code">
-    <button class="copy">複製</button>
-    <pre>python -m venv venv
-venv\Scripts\activate
-pip install -r requirements.txt
-python transcribe_gui.py</pre>
+  <h2 id="s3"><span class="num">3</span>雙擊 <code>VoxLog.bat</code>(全自動)</h2>
+  <p>進到解壓好的 VoxLog 資料夾,找到 <span class="big">VoxLog.bat</span>,<strong>滑鼠左鍵點兩下</strong>。就這樣 —— 它會自動幫你:</p>
+  <div class="card">
+    <p style="margin:4px 0 10px;">
+      ✓ 偵測 Python<br>
+      ✓ 自動安裝 FFmpeg<br>
+      ✓ 建立環境、下載所有需要的套件<br>
+      ✓ 裝完直接打開 VoxLog
+    </p>
   </div>
   <div class="note warn">
-    <span class="ic">⏳</span><code>pip install</code> 會下載 <strong>torch 約 2GB</strong>,網路要穩、請耐心等(可能 10 分鐘以上)。這是語音轉錄必需的。
+    <span class="ic">⏳ 第一次會比較久</span>它要下載 <strong>約 2GB</strong> 的語音模型套件,網路要穩、<strong>請耐心等(可能 10 分鐘以上)</strong>。畫面停著沒動<strong>不是當機</strong>,是在下載。中途別關。
   </div>
-  <p class="muted">之後要再次開啟程式,只要在資料夾終端機執行:</p>
-  <div class="code">
-    <button class="copy">複製</button>
-    <pre>venv\Scripts\activate
-python transcribe_gui.py</pre>
+  <div class="note tip">
+    <span class="ic">🛡️</span>若 Windows 跳出「<strong>已保護你的電腦</strong>」藍色視窗 → 點 <kbd>其他資訊</kbd> → <kbd>仍要執行</kbd>。(這是因為 .bat 沒有付費簽章,不是病毒。)
+  </div>
+  <div class="note tip">
+    <span class="ic">💡</span>萬一第一次轉錄時說「找不到 ffmpeg」,把視窗關掉、<strong>再雙擊一次 VoxLog.bat</strong> 就好(剛裝的 FFmpeg 需要重開才生效)。
+  </div>
+
+  <!-- 4 -->
+  <h2 id="s4"><span class="num">4</span>建一個桌面捷徑(方便每天用)</h2>
+  <p>不想每次都翻資料夾的話,做一個桌面捷徑:</p>
+  <p class="muted">在 <code>VoxLog.bat</code> 上按<strong>滑鼠右鍵</strong> → <kbd>傳送到</kbd> → <kbd>桌面 (建立捷徑)</kbd>。以後桌面點兩下就開。</p>
+  <div class="note warn">
+    <span class="ic">⚠️</span>要建的是<strong>「捷徑」</strong>。<strong>別把 VoxLog.bat 本身拖到桌面</strong> —— 它一旦離開原資料夾就找不到程式、會打不開。
   </div>
 
   <!-- 5 -->
-  <h2 id="s5"><span class="num">5</span>開起來之後</h2>
+  <h2 id="s5"><span class="num">5</span>填 API Key 開始用</h2>
   <div class="card">
-    <p style="margin-top:4px;">程式啟動瞬間會<strong>自動建立設定檔</strong>,你不用碰任何檔案。接著在介面上:</p>
+    <p style="margin-top:4px;">程式打開後會<strong>自動建立設定檔</strong>,你不用碰任何檔案。在介面上:</p>
     <p>① 選 AI 引擎(<strong>ChatGPT / Gemini / Claude</strong>)<br>
-       ② 在 Key 欄位<strong>貼上自己的 API Key</strong><br>
-       ③ 按 <strong>「驗證」</strong>,變綠就代表成功(會自動存檔)<br>
+       ② 在 Key 欄位<strong>貼上 API Key</strong>(跟 Kris 拿,或用自己的)<br>
+       ③ 按 <strong>「驗證」</strong>,變綠就成功(會自動存檔)<br>
        ④ 載入音檔或 <strong>.md / 逐字稿</strong> → 開始轉錄、校正、產生摘要</p>
   </div>
 
   <div class="check">
-    <b>✓ 完成!</b> 之後每次使用都從第 4 步最後那兩行(啟動指令)開始即可。
+    <b>✓ 完成!</b> 以後每次要用,就<strong>雙擊桌面捷徑</strong>(或資料夾裡的 VoxLog.bat)即可,不必再重裝。
   </div>
 
   <hr>
-  <p class="muted"><strong>小提醒:</strong>若電腦有 NVIDIA 顯卡,語音轉錄會快很多(預設是 CPU 版,較慢但可用)。若只想用「載入 .md 做摘要」這類 AI 功能,其實不裝 torch 也能開,但要完整語音轉錄就得照第 4 步裝齊。</p>
+  <p class="muted"><strong>小提醒:</strong>若電腦有 NVIDIA 顯卡,語音轉錄會快很多(預設是 CPU 版,較慢但可用)。若只想用「載入 .md 做摘要」這類 AI 功能,不轉錄語音的話會更快。</p>
 
   <footer>
     VoxLog · Kamiyu Lab<br>
-    遇到問題可參考 repo 內的 <code>README.md</code> 與 <code>MACOS_SETUP.md</code>
+    遇到問題可參考 repo 內的 <code>README.md</code>
   </footer>
 
 </div>
