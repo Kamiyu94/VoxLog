@@ -228,38 +228,26 @@ eval "$(/opt/homebrew/bin/brew shellenv)"</pre>
   </div>
   <p class="muted">(上面複製到的是 <code>cd</code> 加空格;貼上後拖資料夾進來再按 Enter。)</p>
 
-  <p style="margin-top:18px;">進到資料夾後,把<strong>這一整段</strong>複製、貼上、按 Enter。它會建立獨立環境、下載所有需要的套件、然後打開 VoxLog:</p>
+  <p style="margin-top:18px;">進到資料夾後,把<strong>這一整段</strong>複製、貼上、按 Enter。它會建立獨立環境、下載所有需要的套件、<strong>設定好 <code>voxlog</code> 快速啟動指令</strong>、然後打開 VoxLog:</p>
   <div class="code">
     <button class="copy">複製</button>
     <pre>/opt/homebrew/bin/python3.11 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
+chmod +x voxlog
+ln -sf "$PWD/voxlog" /opt/homebrew/bin/voxlog
 python transcribe_gui.py</pre>
   </div>
   <div class="note warn">
     <span class="ic">⏳ 第一次會很久</span>它要下載 <strong>約 2GB</strong> 的 AI 語音模型套件,網路要穩、<strong>請耐心等(可能 10 分鐘以上)</strong>。畫面停著在跑文字<strong>不是當機</strong>,是在下載,中途別關。
   </div>
   <div class="note tip">
-    <span class="ic">💡 以後要再開 VoxLog</span>不用重裝。打開終端機,<code>cd</code> 進 VoxLog 資料夾後,只要貼這兩行:
+    <span class="ic">⭐ 以後開 VoxLog 超簡單</span>上面那段已經幫你設好 <code>voxlog</code> 指令了。以後<strong>在任何地方</strong>打開終端機,只要打一個字:
     <div class="code" style="margin-top:10px;">
-      <button class="copy">複製</button>
-      <pre>source venv/bin/activate
-python transcribe_gui.py</pre>
-    </div>
-  </div>
-  <div class="note tip">
-    <span class="ic">⭐ 想以後只打一個字 <code>voxlog</code> 就開?</span>在 VoxLog 資料夾內<strong>執行一次</strong>下面這段,把它登記成全域指令(只要設定一次):
-    <div class="code" style="margin-top:10px;">
-      <button class="copy">複製</button>
-      <pre>chmod +x voxlog
-ln -sf "$PWD/voxlog" /opt/homebrew/bin/voxlog</pre>
-    </div>
-    <p style="margin:8px 0 2px;">之後<strong>在任何地方</strong>打開終端機,只要打:</p>
-    <div class="code" style="margin-top:6px;">
       <button class="copy">複製</button>
       <pre>voxlog</pre>
     </div>
-    <p class="muted" style="margin-top:6px;">就會自動進資料夾、啟用環境、開啟 VoxLog,不用再 <code>cd</code> 跟貼那兩行。</p>
+    <p class="muted" style="margin-top:6px;">就會自動進資料夾、啟用環境、開啟 App,不用重裝、不用 <code>cd</code>。<br>(若哪天 <code>voxlog</code> 沒反應,也可手動:<code>cd</code> 進資料夾後貼 <code>source venv/bin/activate</code> 再 <code>python transcribe_gui.py</code>。)</p>
   </div>
   <div class="note warn">
     <span class="ic">😵 如果這步「程式一閃就關」或出現一堆紅字</span>多半是撞到 Mac 的已知坑。往下看 <a href="#trouble">⚠️ 疑難排解</a>,對照 ①②③ 解決。
@@ -292,7 +280,7 @@ ln -sf "$PWD/voxlog" /opt/homebrew/bin/voxlog</pre>
   <p class="muted" style="margin-top:12px;">(想用 ChatGPT 或 Claude 的話,key 分別在 <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener">platform.openai.com/api-keys</a>、<a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">console.anthropic.com</a> 申請,作法類似。)</p>
 
   <div class="check">
-    <b>✓ 完成!</b> 之後每次要用,照上面「💡 以後要再開 VoxLog」那兩行貼上;或設定好下面的 <code>voxlog</code> 指令後,直接打一個字 <code>voxlog</code> 就能開,不必再重裝。
+    <b>✓ 完成!</b> 之後每次要用,在終端機打一個字 <code>voxlog</code> 就能開,不必再重裝。
   </div>
 
   <!-- 更新 -->
