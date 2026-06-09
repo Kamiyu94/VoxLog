@@ -207,17 +207,26 @@ brew --version   # 應跳出 Homebrew 5.x
 按「驗證」出現 `HTTP 401: ... Expected OAuth 2 access token, login cookie or
 other valid authentication credential`。
 
-**根本原因（兩層）**：
+**關於金鑰格式（已查證，2026-06）**：Gemini API Key 有兩種合法開頭——
+`AIza`（舊）與 `AQ.`（2026 新格式，部分帳號只發這種）。**兩者都能用 `?key=`
+查詢參數打 `generativelanguage.googleapis.com/v1beta/models`**（已用真實 AQ key
+實測：`?key=` 與 `x-goog-api-key:` 標頭兩種方法皆回 200）。所以 VoxLog 現行
+`verify_engine` 用 `?key=`（transcribe_gui.py:272）**對 AQ key 沒問題，不需改**。
+（`ya29.` / `GOCSPX-` / `4/` 開頭才是 OAuth token/密鑰/授權碼，非 API Key。）
 
-1. **拿錯 key**：Gemini 的 API Key 一定是 `AIza` 開頭（`AIzaSy...`，約 39 字）。
-   同事拿到的是 `AQ` 開頭的東西（並非 API Key，是別種 token），所以一律被擋。
-   `AQ` / `ya29.` / `GOCSPX-` / `4/` 開頭都不是 API Key。正確來源：
-   https://aistudio.google.com/apikey
-2. **「瀏覽器有回應」≠ key 有效**：壞 key 打 `/v1beta/models?key=...` 一樣回 JSON，
-   但內容是 `{"error": {"code": 4xx, "message": "API key not valid..."}}`。
-   要看回的是 `"models": [...]` 清單還是 `"error"`。
+> ⚠️ 早期誤判：一度以為 `AQ` 開頭不是有效 key——錯的，已更正。AQ 是 Google
+> 2026 推的新金鑰格式。
 
-**次因**：Key 欄位 `show="*"` 遮住，殘缺舊 key 沒清掉就貼 → 新 key 累加在後面變壞字串。
+**真正會 401 的原因**（key 格式正常下）：
+
+1. **key 本身被擋**：金鑰被限制（HTTP referrer / IP 限制）、停用、所屬專案沒開
+   Generative Language API，或 key 打錯/失效。判別法——拿該 key 直接 curl：
+   `curl -s "https://generativelanguage.googleapis.com/v1beta/models?key=KEY"`
+   回 `"error"` → key 真有問題；回 `"models":[...]` → key 好，往下看次因。
+2. **「瀏覽器有回應」≠ key 有效**：壞 key 也回 JSON，但內容是
+   `{"error": {"code": 4xx, ...}}`。要看回的是 `"models"` 清單還是 `"error"`。
+3. **次因——key 沒貼乾淨**：Key 欄位 `show="*"` 遮住，殘缺舊 key 沒清掉就貼 →
+   新 key 累加在後面變壞字串。curl 同把 key 回 200、但 VoxLog 401，即屬此類。
 
 **修法／繞過**：
 

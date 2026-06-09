@@ -283,7 +283,7 @@ ln -sf "$PWD/voxlog" /opt/homebrew/bin/voxlog</pre>
        ③ 產生後按 <kbd>Copy</kbd> 複製那串 key,<strong>貼進 VoxLog 的 Key 欄位</strong>按驗證</p>
   </div>
   <div class="note warn">
-    <span class="ic">❗ 一定要從這個網址拿</span>要的是 <strong>Google AI Studio</strong> 的 key(開頭是 <code>AIza</code>、一整串約 39 字),<strong>不是</strong> Google Cloud Console「憑證」裡那種。拿錯地方驗證會出現 <code>401 ... Expected OAuth 2 access token</code> 的錯誤。
+    <span class="ic">❗ 一定要從這個網址拿</span>要的是 <strong>Google AI Studio</strong> 的 API Key —— 開頭是 <code>AIza</code> 或 <code>AQ.</code> 都正常(<code>AQ.</code> 是 2026 的新格式)。<strong>不要</strong>拿成 Google Cloud Console「憑證」裡的 OAuth(<code>ya29.</code>/<code>GOCSPX-</code>),那種驗證會出現 <code>401 ... Expected OAuth 2 access token</code> 的錯誤。
   </div>
   <div class="note tip">
     <span class="ic">📋 複製後想先確認 key 是好的?</span>把網址 <code>https://generativelanguage.googleapis.com/v1beta/models?key=你的KEY</code> 的「你的KEY」換掉,貼到瀏覽器按 Enter —— 跳出一堆模型清單就是有效。<br>
@@ -423,7 +423,7 @@ done</pre>
       <p><strong>症狀:</strong>在 Key 欄位貼上後按「驗證」,出現紅字
       <code>HTTP 401: ... Expected OAuth 2 access token ...</code>,或一直不會變綠。</p>
 
-      <p><strong>原因 1:拿錯 key(最常見)。</strong>Gemini 的 API Key <strong>一定是 <code>AIza</code> 開頭</strong>(完整 <code>AIzaSy...</code>、約 39 字)。如果你的 key 是 <code>AQ...</code>、<code>ya29...</code>、<code>GOCSPX...</code>、<code>4/...</code> 開頭,<strong>那都不是 API Key</strong>,是別種 token,複製錯地方了。請到 <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a> 拿 <code>AIza</code> 開頭那把(沒有就按 Create API key)。</p>
+      <p><strong>原因 1:拿錯 key。</strong>Gemini 的 API Key <strong>兩種開頭都合法</strong>:<code>AIza</code>(舊格式)或 <code>AQ.</code>(2026 新格式,部分帳號只發這種,屬正常,VoxLog 也支援)。但如果你的 key 是 <code>ya29.</code>、<code>GOCSPX-</code>、<code>4/</code> 開頭,那<strong>不是 API Key</strong>(分別是 OAuth token / 用戶端密鑰 / 授權碼),複製錯地方了。一律到 <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a> 拿(沒有就按 Create API key)。</p>
 
       <div class="note warn">
         <span class="ic">❗「瀏覽器跑出東西」不等於 key 是好的</span>把 key 貼到測試網址後,<strong>壞 key 一樣會回一段 JSON</strong>,只是內容是錯誤。要看跑出來的是哪種:<br>
