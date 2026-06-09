@@ -3,8 +3,14 @@
 VoxLog 是一個具備圖形化介面 (GUI) 的語音轉文字與 AI 輔助處理工具，能自動轉錄逐字稿、校正辨識錯誤、切割 SRT 字幕，以及利用 AI 自動產生會議紀錄與待辦事項。
 
 ## 系統需求
-- Python 3.9 或以上版本
-- FFmpeg（用於處理音訊與影片格式轉換）
+- **FFmpeg**（用於處理音訊與影片格式轉換）
+- **Python**：
+  - 🪟 Windows：Python 3.11 或 3.12（官網安裝時記得勾「Add to PATH」）
+  - 🍎 macOS：**請用 Homebrew 的 `python@3.11`**，不要用系統內建的 Python（會讓 GUI 一開就崩潰，詳見下方 macOS 疑難排解 ①）
+
+> 📱 **想要圖文版、手機可讀的安裝指南**：用瀏覽器開
+> [`MACOS_SETUP.html`](MACOS_SETUP.html)（Mac）或 [`WINDOWS_SETUP.html`](WINDOWS_SETUP.html)（Windows），
+> 每段指令都有複製鈕，照著做即可。下面是純文字版步驟。
 
 ## 安裝與設定說明
 
@@ -51,7 +57,7 @@ VoxLog 是一個具備圖形化介面 (GUI) 的語音轉文字與 AI 輔助處�
 
 ### 🍎 macOS 注意事項 / 疑難排解
 
-完整的安裝紀錄與指令在 [`MACOS_SETUP.md`](MACOS_SETUP.md)，這裡是重點摘要。
+圖文版完整指南見 [`MACOS_SETUP.html`](MACOS_SETUP.html)；更底層的安裝踩雷技術紀錄在 [`MACOS_SETUP.md`](MACOS_SETUP.md)。這裡是重點摘要。
 
 #### 為什麼 Mac 安裝比較麻煩？
 本專案原本是 **Windows + NVIDIA(CUDA)** 環境開發的，移植到 Mac 會同時撞上三件事：
@@ -72,11 +78,11 @@ VoxLog 是一個具備圖形化介面 (GUI) 的語音轉文字與 AI 輔助處�
 - **解法**：裝 Homebrew expat，把 `pyexpat.so` 改指向它再重簽章：
   ```bash
   brew install expat
-  SO=/opt/homebrew/Cellar/python@3.11/3.11.15_1/Frameworks/Python.framework/Versions/3.11/lib/python3.11/lib-dynload/pyexpat.cpython-311-darwin.so
+  # 自動抓出 pyexpat.so 路徑（不必寫死版本號，且不靠 import，因為此時 import 本來就壞）
+  SO=$(ls /opt/homebrew/Cellar/python@3.11/*/Frameworks/Python.framework/Versions/3.11/lib/python3.11/lib-dynload/pyexpat.cpython-311-darwin.so | head -1)
   install_name_tool -change /usr/lib/libexpat.1.dylib /opt/homebrew/opt/expat/lib/libexpat.1.dylib "$SO"
   codesign --force --sign - "$SO"
   ```
-  *(路徑中的 `3.11.15_1` 要換成你實際安裝的版本號)*
 
 #### ③ 語者分離（diarization）壞掉（torchcodec 找不到 libavutil）
 症狀：`import whisperx` 出現 `libtorchcodec_core7.dylib ... Library not loaded: @rpath/libavutil.59.dylib`。
