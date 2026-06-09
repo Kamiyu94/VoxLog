@@ -246,6 +246,20 @@ python transcribe_gui.py</pre>
 python transcribe_gui.py</pre>
     </div>
   </div>
+  <div class="note tip">
+    <span class="ic">⭐ 想以後只打一個字 <code>voxlog</code> 就開?</span>在 VoxLog 資料夾內<strong>執行一次</strong>下面這段,把它登記成全域指令(只要設定一次):
+    <div class="code" style="margin-top:10px;">
+      <button class="copy">複製</button>
+      <pre>chmod +x voxlog
+ln -sf "$PWD/voxlog" /opt/homebrew/bin/voxlog</pre>
+    </div>
+    <p style="margin:8px 0 2px;">之後<strong>在任何地方</strong>打開終端機,只要打:</p>
+    <div class="code" style="margin-top:6px;">
+      <button class="copy">複製</button>
+      <pre>voxlog</pre>
+    </div>
+    <p class="muted" style="margin-top:6px;">就會自動進資料夾、啟用環境、開啟 VoxLog,不用再 <code>cd</code> 跟貼那兩行。</p>
+  </div>
   <div class="note warn">
     <span class="ic">😵 如果這步「程式一閃就關」或出現一堆紅字</span>多半是撞到 Mac 的已知坑。往下看 <a href="#trouble">⚠️ 疑難排解</a>,對照 ①②③ 解決。
   </div>

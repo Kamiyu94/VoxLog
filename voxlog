@@ -1,0 +1,21 @@
+#!/bin/zsh
+# VoxLog 啟動器（macOS）
+# 切到專案目錄、啟用 venv、開啟 App。
+#
+# 用法：
+#   ./voxlog                       直接從專案資料夾執行
+#   ln -sf "$PWD/voxlog" /opt/homebrew/bin/voxlog   登記成全域指令後，任何地方打 voxlog 即可
+#
+# `${0:A:h}` 會解析掉 symlink、取得這支腳本「真正所在」的資料夾，
+# 所以即使是透過 /opt/homebrew/bin 的連結叫起來，也能正確找回專案目錄。
+
+HERE="${0:A:h}"
+cd "$HERE" || { echo "找不到 VoxLog 目錄：$HERE"; exit 1; }
+
+if [[ ! -d venv ]]; then
+  echo "找不到 venv —— 請先依 MACOS_SETUP 完成安裝（建立環境那步）。"
+  exit 1
+fi
+
+source venv/bin/activate
+exec python transcribe_gui.py
