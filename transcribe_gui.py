@@ -1113,12 +1113,13 @@ class TranscribeApp:
             value=self.cfg.get("gemini_model", _ENGINE_MODEL_DEFAULT["gemini"]))
         self.ai_model_combo = ctk.CTkComboBox(
             self.ai_model_row, variable=self.ai_model_var, values=_ENGINE_MODELS["gemini"],
+            width=260,
             fg_color=SURFACE, text_color=TEXT, border_color=BORDER, border_width=1,
             button_color=BORDER, button_hover_color=ACCENT,
             dropdown_fg_color=SURFACE, dropdown_text_color=TEXT, dropdown_hover_color=BORDER,
             font=F(FONT_UI, 13),
         )
-        self.ai_model_combo.pack(side="left", fill="x", expand=True, padx=(0, 4))
+        self.ai_model_combo.pack(side="left", padx=(0, 4))
         self.ai_model_row.pack(fill="x", anchor="w", pady=(6, 0))
 
         # 第三行：API Key 輸入
