@@ -101,9 +101,14 @@ VoxLog 是一個具備圖形化介面 (GUI) 的語音轉文字與 AI 輔助處�
   > 那只在使用即時擷取裝置時才會有影響，VoxLog 只做檔案解碼。
 
 #### ④ 語者分離需要 HuggingFace Token + 接受模型條款
-在 `config.json` 填入 `hf_token`，並到下列頁面用同一帳號按下「Agree / Accept」：
-- https://huggingface.co/pyannote/speaker-diarization-3.1
-- https://huggingface.co/pyannote/segmentation-3.0
+1. 到 https://huggingface.co/settings/tokens 註冊／登入後建立 token，勾選 **Read access to public gated repositories**。
+2. 用**同一帳號**到下列兩頁按下「Agree and access repository」：
+   - https://huggingface.co/pyannote/speaker-diarization-community-1
+   - https://huggingface.co/pyannote/segmentation-3.0
+3. 在 GUI 的「HuggingFace Token」欄位貼上 token（會自動存進 `config.json` 的 `hf_token`）。
+
+> 程式實際載入的模型是 `pyannote/speaker-diarization-community-1`（whisperx 預設），
+> 所以**一定要同意 community-1 那一頁**，同意舊的 `speaker-diarization-3.1` 沒用。
 
 #### ⑤ 效能與其他
 - **Apple Silicon (M 系列)**：一般 Whisper 引擎支援 **MPS 加速**；WhisperX 目前在 Mac 只跑 CPU，功能正常但較慢。

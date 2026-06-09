@@ -326,12 +326,20 @@ done</pre>
   </details>
 
   <details>
-    <summary>④ 語者分離需要 HuggingFace 權限<span class="tag">選用</span></summary>
+    <summary>④ 語者分離要怎麼拿 HuggingFace Token?<span class="tag">選用</span></summary>
     <div class="body">
-      <p>若要用「分辨不同講者」功能,需要一組免費的 HuggingFace Token,並用<strong>同一個帳號</strong>到下面兩頁按 <kbd>Agree / Accept</kbd> 同意條款:</p>
-      <p>• <a href="https://huggingface.co/pyannote/speaker-diarization-3.1" target="_blank" rel="noopener">pyannote/speaker-diarization-3.1</a><br>
+      <p>只有要用「<strong>分辨不同講者</strong>」(WhisperX 引擎的語者分離)時才需要,而且 Token <strong>免費</strong>。一般轉錄、做摘要都不用。三步:</p>
+      <p><strong>① 註冊 / 登入並產生 Token</strong><br>
+         到 <a href="https://huggingface.co/settings/tokens" target="_blank" rel="noopener">huggingface.co/settings/tokens</a> 註冊(或登入)→ 按 <kbd>Create new token</kbd> → 名稱隨意,<strong>務必勾選 <code>Read access to public gated repositories</code></strong> → 建立後<strong>把那串 token 複製起來</strong>(只會顯示一次)。</p>
+      <p><strong>② 用同一個帳號到下面兩頁按「同意」</strong><br>
+         各自進去後點 <kbd>Agree and access repository</kbd>:<br>
+         • <a href="https://huggingface.co/pyannote/speaker-diarization-community-1" target="_blank" rel="noopener">pyannote/speaker-diarization-community-1</a><br>
          • <a href="https://huggingface.co/pyannote/segmentation-3.0" target="_blank" rel="noopener">pyannote/segmentation-3.0</a></p>
-      <p class="muted">Token 填在 GUI 裡(或 <code>config.json</code> 的 <code>hf_token</code>)即可。</p>
+      <p><strong>③ 貼進 VoxLog</strong><br>
+         打開 App,在「HuggingFace Token」欄位貼上剛剛複製的 token(會自動存進 <code>config.json</code> 的 <code>hf_token</code>)。</p>
+      <div class="note warn">
+        <span class="ic">❗ 一定要同意 community-1 那頁</span>VoxLog 實際用的是 <code>speaker-diarization-community-1</code> 這個模型。如果<strong>填了 token 卻還是失敗</strong>,多半是只同意了舊版 <code>3.1</code>、漏了 community-1 —— 回去把上面兩頁都按過同意即可。
+      </div>
     </div>
   </details>
 

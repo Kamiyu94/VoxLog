@@ -90,9 +90,13 @@ codesign --force --sign - "$SO"
    pip install faster-whisper ctranslate2
    ```
 
-2. **pyannote.audio**：需要 HuggingFace Token，且需要在 HF 網站接受使用條款：
-   - https://huggingface.co/pyannote/speaker-diarization-3.1
+2. **pyannote.audio**：需要 HuggingFace Token（到 https://huggingface.co/settings/tokens
+   建立，勾 Read access to public gated repositories），且需用同一帳號在 HF 網站接受使用條款：
+   - https://huggingface.co/pyannote/speaker-diarization-community-1
    - https://huggingface.co/pyannote/segmentation-3.0
+
+   > whisperx 的 `DiarizationPipeline` 預設載入 `speaker-diarization-community-1`
+   > （見 `whisperx/diarize.py`），**不是**舊版 `3.1`；同意錯模型頁 token 會被擋。
 
 3. **WhisperX 在 Mac 上只跑 CPU**：`whisperx_worker` 沒有 MPS 分支，
    速度比 Windows + CUDA 慢，功能正常。一般 Whisper 引擎有 MPS 支援，速度較快。
