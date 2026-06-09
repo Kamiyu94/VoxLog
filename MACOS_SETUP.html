@@ -174,8 +174,21 @@
     <button class="copy">複製</button>
     <pre>/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"</pre>
   </div>
+  <div class="note tip">
+    <span class="ic">⏳</span>安裝中途會<strong>停住、游標不動好幾分鐘</strong>(在下載開發者工具),<strong>這是正常的,別關</strong>。若彈出一個小視窗問要不要裝「命令列工具」,按 <strong>Install</strong> 等它跑完。
+  </div>
+
+  <h3>接著一定要做這步:讓系統認得 brew</h3>
+  <p class="muted">裝完先別急著下一步。Homebrew 雖然裝好了,但<strong>系統還不知道去哪找它</strong>,這時候打 <code>brew</code> 會說「找不到」。把下面<strong>這一整段</strong>複製貼上、按 Enter,就接上了(不會有任何訊息是正常的):</p>
+  <div class="code">
+    <button class="copy">複製</button>
+    <pre>echo >> ~/.zprofile
+echo 'eval "$(/opt/homebrew/bin/brew shellenv)"' >> ~/.zprofile
+eval "$(/opt/homebrew/bin/brew shellenv)"</pre>
+  </div>
+  <p class="muted">然後再貼一次 <code>brew --version</code> 驗證 —— <strong>這次有跳出版本號(例如 <code>Homebrew 5.x</code>)就成功了</strong>,可以往步驟 2。以後開新終端機都會自動生效,不用再貼。</p>
   <div class="note warn">
-    <span class="ic">⚠️ Apple Silicon(M 系列晶片)裝完要多做一步</span>安裝結束時畫面會印出兩行 <code>echo ... >> ~/.zprofile</code> 跟 <code>eval ...</code> 的指令 —— <strong>把它印的那兩行照貼一次並按 Enter</strong>,Homebrew 才會生效。然後<strong>關掉終端機再重開一個新的</strong>。
+    <span class="ic">❗ 為什麼要這一步?</span>這是 <strong>Apple Silicon(M1/M2/M3… 晶片)Mac 最常卡住的地方</strong>:brew 明明裝好了,打 <code>brew --version</code> 卻說「command not found」。原因就是上面這段沒做 —— 它的作用是把 brew 的位置加進系統的搜尋名單。<strong>貼完上面那段就能解決。</strong>
   </div>
 
   <!-- 2 -->

@@ -169,6 +169,35 @@ python transcribe_gui.py
 
 ---
 
+## ⚠️ 第三個雷：brew 裝好了卻「command not found」（同事 M2 MBA 踩到，已修文件 ✅）
+
+Apple Silicon Mac 裝完 Homebrew 後，`brew --version` 仍報 command not found。
+
+**根本原因**：Homebrew 官方安裝程式在 Apple Silicon 上把 brew 裝在
+`/opt/homebrew/`，但**不會自動把這路徑加進 PATH**；它只在安裝結尾「印出」
+要手動補的兩行（`echo ... >> ~/.zprofile` + `eval ...`）。非工程師很容易
+沒注意到、或關掉視窗就漏掉，導致「裝好了卻叫不動」。
+
+**修法**：把 brew 的位置寫進 `~/.zprofile` 並在當前 session 立即生效：
+
+```bash
+echo >> ~/.zprofile
+echo 'eval "$(/opt/homebrew/bin/brew shellenv)"' >> ~/.zprofile
+eval "$(/opt/homebrew/bin/brew shellenv)"
+
+# 驗證
+brew --version   # 應跳出 Homebrew 5.x
+```
+
+> 診斷技巧：若 `brew --version` 沒反應，先用完整路徑 `/opt/homebrew/bin/brew --version`
+> 測 —— 有版本號代表「已裝好、只是 PATH 沒接上」（跑上面那段即可）；
+> 報 `no such file` 才是真的沒裝成功，要重跑安裝指令。
+> （Intel Mac 路徑是 `/usr/local/bin/brew`，但本專案目標機器都是 Apple Silicon。）
+>
+> 已在 `MACOS_SETUP.html` 步驟 1 改為直接給固定指令，不再要使用者自己找那兩行。
+
+---
+
 ## config.json 設定
 
 從 Windows 複製 `config.json` 內容過來，或重新填寫：
