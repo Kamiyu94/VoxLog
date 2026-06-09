@@ -270,10 +270,26 @@ ln -sf "$PWD/voxlog" /opt/homebrew/bin/voxlog</pre>
   <div class="card">
     <p style="margin-top:4px;">程式打開後會<strong>自動建立設定檔</strong>,你不用碰任何檔案。在介面上:</p>
     <p>① 選 AI 引擎(<strong>ChatGPT / Gemini / Claude</strong>)<br>
-       ② 在 Key 欄位<strong>貼上 API Key</strong>(跟 Kris 拿,或用自己的)<br>
+       ② 在 Key 欄位<strong>貼上 API Key</strong>(跟 Kris 拿,或照下面自己申請)<br>
        ③ 按 <strong>「驗證」</strong>,變綠就成功(會自動存檔)<br>
        ④ 載入音檔或 <strong>.md / 逐字稿</strong> → 開始轉錄、校正、產生摘要</p>
   </div>
+
+  <h3>怎麼自己申請 Gemini API Key(免費)</h3>
+  <p class="muted">Gemini 有免費額度,個人用通常夠。三步:</p>
+  <div class="card">
+    <p style="margin-top:4px;">① 用 Google 帳號登入 <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Google AI Studio 金鑰頁</a>(網址:<code>aistudio.google.com/apikey</code>)<br>
+       ② 按 <kbd>Create API key</kbd> → 選一個專案(沒有就讓它自動建)<br>
+       ③ 產生後按 <kbd>Copy</kbd> 複製那串 key,<strong>貼進 VoxLog 的 Key 欄位</strong>按驗證</p>
+  </div>
+  <div class="note warn">
+    <span class="ic">❗ 一定要從這個網址拿</span>要的是 <strong>Google AI Studio</strong> 的 key(開頭是 <code>AIza</code>、一整串約 39 字),<strong>不是</strong> Google Cloud Console「憑證」裡那種。拿錯地方驗證會出現 <code>401 ... Expected OAuth 2 access token</code> 的錯誤。
+  </div>
+  <div class="note tip">
+    <span class="ic">📋 複製後想先確認 key 是好的?</span>把網址 <code>https://generativelanguage.googleapis.com/v1beta/models?key=你的KEY</code> 的「你的KEY」換掉,貼到瀏覽器按 Enter —— 跳出一堆模型清單就是有效。<br>
+    <strong>貼進 VoxLog 後若驗證仍失敗</strong>,多半是貼上時沒貼完整:點欄位 → 把舊內容<strong>整個刪乾淨</strong> → 重新貼一次。
+  </div>
+  <p class="muted" style="margin-top:12px;">(想用 ChatGPT 或 Claude 的話,key 分別在 <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener">platform.openai.com/api-keys</a>、<a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">console.anthropic.com</a> 申請,作法類似。)</p>
 
   <div class="check">
     <b>✓ 完成!</b> 之後每次要用,照上面「💡 以後要再開 VoxLog」那兩行貼上;或設定好下面的 <code>voxlog</code> 指令後,直接打一個字 <code>voxlog</code> 就能開,不必再重裝。
