@@ -202,6 +202,50 @@ brew --version   # 應跳出 Homebrew 5.x
 
 ---
 
+## ⚠️ 第四個雷：AI API Key 驗證 401（同事 Gemini 實戰，已修文件 ✅）
+
+按「驗證」出現 `HTTP 401: ... Expected OAuth 2 access token, login cookie or
+other valid authentication credential`。
+
+**根本原因（兩層）**：
+
+1. **拿錯 key**：Gemini 的 API Key 一定是 `AIza` 開頭（`AIzaSy...`，約 39 字）。
+   同事拿到的是 `AQ` 開頭的東西（並非 API Key，是別種 token），所以一律被擋。
+   `AQ` / `ya29.` / `GOCSPX-` / `4/` 開頭都不是 API Key。正確來源：
+   https://aistudio.google.com/apikey
+2. **「瀏覽器有回應」≠ key 有效**：壞 key 打 `/v1beta/models?key=...` 一樣回 JSON，
+   但內容是 `{"error": {"code": 4xx, "message": "API key not valid..."}}`。
+   要看回的是 `"models": [...]` 清單還是 `"error"`。
+
+**次因**：Key 欄位 `show="*"` 遮住，殘缺舊 key 沒清掉就貼 → 新 key 累加在後面變壞字串。
+
+**修法／繞過**：
+
+```bash
+# 確認 key 真的有效（看得到、跟 GUI 同樣的 REST 測法）
+curl -s "https://generativelanguage.googleapis.com/v1beta/models?key=AIza開頭key" | head
+
+# 繞過會累加的輸入框：直接寫進 config.json，App 啟動時自動載入（transcribe_gui.py:1090）
+open -e config.json   # 把 "gemini_key" 換成確認過的 AIza key，存檔後重開
+```
+
+> 驗證端點打的是 `/models`（與模型無關），所以**就算之後 Gemini 退役某模型、驗證仍會綠**，
+> 但實際產生摘要用的是寫死的 `gemini-3.1-flash-lite`（transcribe_gui.py:235），會 404。
+> 模型名稱可考慮搬進 config.json（如 OpenAI 的 `openai_model` 做法）以便日後免改程式切換。
+
+---
+
+## ⚠️ 第五個雷：macOS 上 ⌘C/⌘V 在 GUI 失效（已內建修正）
+
+tkinter 在 macOS 預設的 `Cmd+C/V/X/A` 常失靈，已由 `_enable_mac_clipboard()`
+（transcribe_gui.py:1849）手動綁定修正。**舊下載版本沒有此修正**，需 `git pull`／
+重抓 ZIP 後重啟。
+
+> 已知殘留弱點：`Cmd+A` 靠 `event_generate("<<SelectAll>>")`，在 macOS Entry 上不一定生效，
+> 導致「全選刪除」失敗、貼上變累加（即上面第四個雷的次因）。繞過法：直接編 config.json。
+
+---
+
 ## config.json 設定
 
 從 Windows 複製 `config.json` 內容過來，或重新填寫：

@@ -418,7 +418,50 @@ done</pre>
   </details>
 
   <details>
-    <summary>⑤ 速度與其他</summary>
+    <summary>⑤ AI 的 API Key 驗證失敗 / 401 錯誤<span class="tag">最常見</span></summary>
+    <div class="body">
+      <p><strong>症狀:</strong>在 Key 欄位貼上後按「驗證」,出現紅字
+      <code>HTTP 401: ... Expected OAuth 2 access token ...</code>,或一直不會變綠。</p>
+
+      <p><strong>原因 1:拿錯 key(最常見)。</strong>Gemini 的 API Key <strong>一定是 <code>AIza</code> 開頭</strong>(完整 <code>AIzaSy...</code>、約 39 字)。如果你的 key 是 <code>AQ...</code>、<code>ya29...</code>、<code>GOCSPX...</code>、<code>4/...</code> 開頭,<strong>那都不是 API Key</strong>,是別種 token,複製錯地方了。請到 <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a> 拿 <code>AIza</code> 開頭那把(沒有就按 Create API key)。</p>
+
+      <div class="note warn">
+        <span class="ic">❗「瀏覽器跑出東西」不等於 key 是好的</span>把 key 貼到測試網址後,<strong>壞 key 一樣會回一段 JSON</strong>,只是內容是錯誤。要看跑出來的是哪種:<br>
+        • 一條條 <code>"models/gemini-..."</code> 的清單 → <strong>key 好</strong><br>
+        • 開頭是 <code>"error"</code>、有 <code>"API key not valid"</code> 或 <code>code: 400/401/403</code> → <strong>key 壞</strong>(換一把)
+      </div>
+      <p class="muted">測試網址(把「你的KEY」換掉,貼瀏覽器按 Enter):</p>
+      <div class="code">
+        <button class="copy">複製</button>
+        <pre>https://generativelanguage.googleapis.com/v1beta/models?key=你的KEY</pre>
+      </div>
+
+      <p style="margin-top:14px;"><strong>原因 2:key 沒貼乾淨。</strong>Key 欄位用 <code>*</code> 星號遮住,看不到內容。如果欄位裡原本有殘缺的舊 key,你又沒清掉就貼,新 key 會<strong>接在後面變成一長串壞東西</strong>。<strong>解法:</strong>點進欄位,把裡面<strong>整個刪乾淨</strong>(按住 Delete 刪到空),再貼一次乾淨的 key。</p>
+
+      <div class="note tip">
+        <span class="ic">🛟 終極解法:直接寫進設定檔,完全繞過輸入框</span>如果上面都試了還是失敗,在 VoxLog 資料夾內開設定檔:
+        <div class="code" style="margin-top:10px;">
+          <button class="copy">複製</button>
+          <pre>open -e config.json</pre>
+        </div>
+        把 <code>"gemini_key": "..."</code> 引號中間<strong>整段換成</strong>確認過的 <code>AIza</code> key(其他引擎是 <code>anthropic_key</code> / <code>openai_key</code>),存檔(⌘S)→ 重開 <code>voxlog</code>。App 會自動把它載進欄位,不必再經過複製貼上。
+      </div>
+    </div>
+  </details>
+
+  <details>
+    <summary>⑥ App 裡複製貼上(⌘C / ⌘V)沒反應<span class="tag">macOS</span></summary>
+    <div class="body">
+      <p><strong>症狀:</strong>在 VoxLog 視窗裡 <kbd>⌘C</kbd> / <kbd>⌘V</kbd> / <kbd>⌘A</kbd> 沒作用,key 或網址貼不進去。</p>
+      <p><strong>原因:</strong>macOS 上 tkinter(VoxLog 的介面框架)的剪貼簿快捷鍵預設常失靈。新版 VoxLog 已內建修正,但<strong>舊的下載版本沒有</strong>。</p>
+      <p><strong>解法:</strong></p>
+      <p>① <strong>先更新到最新版</strong>(見上面「🔄 之後怎麼更新到最新版」,或重新到 GitHub 下載 ZIP 覆蓋),再<strong>重開 App</strong> 讓修正生效。</p>
+      <p>② 萬一還是不行,就用<strong>不需要貼上</strong>的方式填 key —— 照上面 ⑤ 的「🛟 終極解法」直接編 <code>config.json</code>。</p>
+    </div>
+  </details>
+
+  <details>
+    <summary>⑦ 速度與其他</summary>
     <div class="body">
       <p>• <strong>Apple Silicon(M 系列)</strong>:一般 Whisper 引擎支援 <strong>MPS 加速</strong>,轉錄較快。</p>
       <p>• <strong>WhisperX 引擎</strong>在 Mac 目前只跑 CPU,功能正常但較慢 —— 想快就選一般 Whisper。</p>
