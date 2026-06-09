@@ -155,6 +155,7 @@
     <a href="#s3"><span class="n">3</span>下載專案</a>
     <a href="#s4"><span class="n">4</span>建立環境並啟動</a>
     <a href="#s5"><span class="n">5</span>填 API Key 開始用</a>
+    <a href="#update"><span class="n">🔄</span>之後怎麼更新到最新版</a>
     <a href="#trouble"><span class="n">⚠</span>遇到問題?(疑難排解)</a>
   </div>
 
@@ -275,7 +276,50 @@ ln -sf "$PWD/voxlog" /opt/homebrew/bin/voxlog</pre>
   </div>
 
   <div class="check">
-    <b>✓ 完成!</b> 之後每次要用,照上面「💡 以後要再開 VoxLog」那兩行貼上即可,不必再重裝。
+    <b>✓ 完成!</b> 之後每次要用,照上面「💡 以後要再開 VoxLog」那兩行貼上;或設定好下面的 <code>voxlog</code> 指令後,直接打一個字 <code>voxlog</code> 就能開,不必再重裝。
+  </div>
+
+  <!-- 更新 -->
+  <hr>
+  <h2 id="update"><span class="num" style="background:var(--green);">🔄</span>之後怎麼更新到最新版</h2>
+  <p>VoxLog 有改版時,用 <strong>git</strong> 一行就能更新,<strong>不會動到你的 API Key 與已裝好的環境</strong>。</p>
+
+  <h3>① 先確認有沒有 git</h3>
+  <div class="code">
+    <button class="copy">複製</button>
+    <pre>git --version</pre>
+  </div>
+  <p class="muted">有跳出版本號 → 已內建(裝 Homebrew 時通常會一起裝),跳到 ②。<br>顯示沒有 → 貼這行裝它:</p>
+  <div class="code">
+    <button class="copy">複製</button>
+    <pre>brew install git</pre>
+  </div>
+
+  <h3>② 第一次:把資料夾接上 git(只做一次)</h3>
+  <p class="muted">如果你當初是用「Download ZIP」下載的,先<strong>進到 VoxLog 資料夾</strong>(<code>cd</code> + 拖資料夾),貼這一整段把它接到線上專案:</p>
+  <div class="code">
+    <button class="copy">複製</button>
+    <pre>git init
+git remote add origin https://github.com/Kamiyu94/VoxLog.git
+git fetch origin
+git reset --hard origin/main
+git branch -M main</pre>
+  </div>
+  <div class="note tip">
+    <span class="ic">🔒</span>你的 <code>config.json</code>(API Key)和 <code>venv</code>(已下載約 2GB 的環境)都<strong>不會被覆蓋</strong>,放心。<br>(當初是用 <code>git clone</code> 下載的人不用做這步。)
+  </div>
+
+  <h3>③ 以後每次更新</h3>
+  <p class="muted">進到 VoxLog 資料夾,貼:</p>
+  <div class="code">
+    <button class="copy">複製</button>
+    <pre>git pull</pre>
+  </div>
+  <p class="muted">如果更新後需要的套件有變動,再啟用環境補裝一次:</p>
+  <div class="code">
+    <button class="copy">複製</button>
+    <pre>source venv/bin/activate
+pip install -r requirements.txt</pre>
   </div>
 
   <!-- 疑難排解 -->
