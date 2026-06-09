@@ -239,8 +239,10 @@ open -e config.json   # 把 "gemini_key" 換成確認過的 AIza key，存檔後
 ```
 
 > 驗證端點打的是 `/models`（與模型無關），所以**就算之後 Gemini 退役某模型、驗證仍會綠**，
-> 但實際產生摘要用的是寫死的 `gemini-3.1-flash-lite`（transcribe_gui.py:235），會 404。
-> 模型名稱可考慮搬進 config.json（如 OpenAI 的 `openai_model` 做法）以便日後免改程式切換。
+> 但實際產生摘要用的是某個模型名稱，退役後會 404。
+> **已處理**：Claude / Gemini 的模型名稱已搬進 config.json（`claude_model` / `gemini_model`，
+> 與 OpenAI 的 `openai_model` 一致），退役時改設定檔即可、免動程式。預設值仍寫在
+> `_call_ai`（transcribe_gui.py），更新預設也只是改一個字串。
 
 ---
 
@@ -266,5 +268,17 @@ tkinter 在 macOS 預設的 `Cmd+C/V/X/A` 常失靈，已由 `_enable_mac_clipbo
   "anthropic_key": "你的 Anthropic API Key",
   "lmstudio_model": "google/gemma-4-e4b",
   "cookies_browser": "Cookies: 無"
+}
+```
+
+### （選用）指定 AI 模型
+
+不填會用程式內建預設。供應商換模型時，在這裡覆寫即可、免改程式：
+
+```json
+{
+  "gemini_model": "gemini-3.1-flash-lite",
+  "claude_model": "claude-sonnet-4-6",
+  "openai_model": "gpt-4o"
 }
 ```

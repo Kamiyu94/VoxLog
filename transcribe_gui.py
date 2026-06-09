@@ -192,9 +192,10 @@ def _words_to_srt_segments(words, max_chars=20):
 def _call_ai(prompt, ai_engine, api_key):
     if ai_engine == "claude":
         import anthropic
+        model = load_config().get("claude_model", "claude-sonnet-4-6")
         client = anthropic.Anthropic(api_key=api_key)
         msg = client.messages.create(
-            model="claude-sonnet-4-6",
+            model=model,
             max_tokens=4096,
             messages=[{"role": "user", "content": prompt}],
         )
@@ -230,9 +231,10 @@ def _call_ai(prompt, ai_engine, api_key):
         return resp.choices[0].message.content
     else:
         from google import genai
+        model = load_config().get("gemini_model", "gemini-3.1-flash-lite")
         client = genai.Client(api_key=api_key)
         response = client.models.generate_content(
-            model="gemini-3.1-flash-lite",
+            model=model,
             contents=prompt,
         )
         return response.text
