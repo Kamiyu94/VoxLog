@@ -256,6 +256,28 @@ _ENGINE_DISPLAY = {
     "lmstudio": "LM Studio",
 }
 
+# ── 雲端引擎可選的模型清單（GUI 下拉選單用）────────────────────────────
+# 維護方式：供應商新增/淘汰模型時，改下面這份清單再 git pull 即可，毋須改其他程式。
+# 使用者在 GUI 仍可手動輸入未列出的模型名稱。本地引擎（ollama / lmstudio）的模型
+# 直接打在 Key 欄位，不走這份清單。
+_ENGINE_MODELS = {
+    "claude": ["claude-opus-4-8", "claude-sonnet-4-6", "claude-haiku-4-5-20251001"],
+    "gemini": ["gemini-3.1-flash-lite", "gemini-3.1-pro", "gemini-2.5-flash"],
+    "openai": ["gpt-4o", "gpt-4o-mini", "gpt-4.1"],
+}
+# 各引擎的模型名稱在 config.json 對應的欄位（與 _call_ai 讀取的一致）
+_ENGINE_MODEL_KEY = {
+    "claude": "claude_model",
+    "gemini": "gemini_model",
+    "openai": "openai_model",
+}
+# 各引擎預設模型（與 _call_ai 的 fallback 一致；清單順序可不同，顯示以存檔值為準）
+_ENGINE_MODEL_DEFAULT = {
+    "claude": "claude-sonnet-4-6",
+    "gemini": "gemini-3.1-flash-lite",
+    "openai": "gpt-4o",
+}
+
 
 def verify_engine(ai_engine, api_key):
     """以最小成本的呼叫驗證金鑰／連線，回傳 (ok: bool, message: str)。"""
@@ -1079,20 +1101,37 @@ class TranscribeApp:
                 font=F(FONT_UI, 14),
             ).pack(side="left", padx=(0, 12))
 
-        # 第二行：API Key 輸入
-        ai_key_row = ctk.CTkFrame(ai_frame, fg_color="transparent")
-        ai_key_row.pack(fill="x", anchor="w", pady=(6, 0))
-        self.ai_key_label = ctk.CTkLabel(ai_key_row, text="Gemini Key",
+        # 第二行：模型選擇（雲端引擎才顯示；可下拉點選，也可手動輸入）
+        self.ai_model_row = ctk.CTkFrame(ai_frame, fg_color="transparent")
+        ctk.CTkLabel(self.ai_model_row, text="模型",
+                     fg_color="transparent", text_color=SUBTEXT,
+                     font=F(FONT_UI, 13), width=72, anchor="e").pack(side="left", padx=(0, 8))
+        self.ai_model_var = tk.StringVar(
+            value=self.cfg.get("gemini_model", _ENGINE_MODEL_DEFAULT["gemini"]))
+        self.ai_model_combo = ctk.CTkComboBox(
+            self.ai_model_row, variable=self.ai_model_var, values=_ENGINE_MODELS["gemini"],
+            fg_color=SURFACE, text_color=TEXT, border_color=BORDER, border_width=1,
+            button_color=BORDER, button_hover_color=ACCENT,
+            dropdown_fg_color=SURFACE, dropdown_text_color=TEXT, dropdown_hover_color=BORDER,
+            font=F(FONT_UI, 13),
+        )
+        self.ai_model_combo.pack(side="left", fill="x", expand=True, padx=(0, 4))
+        self.ai_model_row.pack(fill="x", anchor="w", pady=(6, 0))
+
+        # 第三行：API Key 輸入
+        self.ai_key_row = ctk.CTkFrame(ai_frame, fg_color="transparent")
+        self.ai_key_row.pack(fill="x", anchor="w", pady=(6, 0))
+        self.ai_key_label = ctk.CTkLabel(self.ai_key_row, text="Gemini Key",
                                           fg_color="transparent", text_color=SUBTEXT,
                                           font=F(FONT_UI, 13), width=72, anchor="e")
         self.ai_key_label.pack(side="left", padx=(0, 8))
         self.ai_key_var = tk.StringVar(value=self.cfg.get("gemini_key", ""))
         self.verify_btn = ctk.CTkButton(
-            ai_key_row, text="驗證", command=self._verify_api,
+            self.ai_key_row, text="驗證", command=self._verify_api,
             font=F(FONT_UI, 13, weight="bold"), width=64,
         )
         self.verify_btn.pack(side="right", padx=(8, 0))
-        self.ai_key_entry = ctk.CTkEntry(ai_key_row, textvariable=self.ai_key_var, show="*",
+        self.ai_key_entry = ctk.CTkEntry(self.ai_key_row, textvariable=self.ai_key_var, show="*",
                                          fg_color=SURFACE, text_color=TEXT,
                                          border_color=BORDER, border_width=1,
                                          font=F(FONT_UI, 13))
@@ -1100,6 +1139,9 @@ class TranscribeApp:
         # 有填入值時才把「驗證」鈕從暗色轉成藍色，明確提示可按
         self.ai_key_var.trace_add("write", self._update_verify_btn)
         self._update_verify_btn()
+        # 模型下拉變動（點選或手打）即存進 config，並依目前引擎同步顯示
+        self.ai_model_var.trace_add("write", self._on_model_change)
+        self._sync_model_widget(self.ai_engine_var.get())
 
         # ── Row 6: 後製按鈕 ──
         post_outer = ctk.CTkFrame(self.root, fg_color="transparent")
@@ -1300,10 +1342,42 @@ class TranscribeApp:
         else:
             self.wx_frame.grid_remove()
 
+    def _sync_model_widget(self, engine):
+        """切換引擎時更新模型下拉：雲端引擎顯示對應清單與已存值；
+        本地引擎（ollama / lmstudio）的模型即 Key 欄位，故隱藏下拉。"""
+        if not hasattr(self, "ai_model_combo"):
+            return
+        if engine in _ENGINE_MODELS:
+            self.ai_model_combo.configure(values=_ENGINE_MODELS[engine])
+            cfg_key = _ENGINE_MODEL_KEY[engine]
+            self.ai_model_var.set(self.cfg.get(cfg_key, _ENGINE_MODEL_DEFAULT[engine]))
+            if not self.ai_model_row.winfo_ismapped():
+                self.ai_model_row.pack(fill="x", anchor="w", pady=(6, 0),
+                                       before=self.ai_key_row)
+        else:
+            self.ai_model_row.pack_forget()
+
+    def _on_model_change(self, *_):
+        """模型下拉變動（點選或手動輸入）即存進 config 對應欄位。"""
+        if not hasattr(self, "ai_model_combo"):
+            return
+        engine = self.ai_engine_var.get()
+        if engine not in _ENGINE_MODEL_KEY:
+            return
+        model = self.ai_model_var.get().strip()
+        if not model:
+            return
+        cfg_key = _ENGINE_MODEL_KEY[engine]
+        if self.cfg.get(cfg_key) == model:  # 沒變就不重複寫檔（含程式設定值時）
+            return
+        save_config({cfg_key: model})
+        self.cfg[cfg_key] = model
+
     def _on_ai_engine_change(self):
         engine = self.ai_engine_var.get()
         if hasattr(self, "verify_btn"):  # 切換引擎時清掉上次的驗證結果
             self.verify_btn.configure(text="驗證")
+        self._sync_model_widget(engine)
         if engine == "claude":
             self.ai_key_label.configure(text="Claude Key")
             self.ai_key_var.set(self.cfg.get("anthropic_key", ""))

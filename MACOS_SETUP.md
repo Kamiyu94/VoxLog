@@ -271,9 +271,13 @@ tkinter 在 macOS 預設的 `Cmd+C/V/X/A` 常失靈，已由 `_enable_mac_clipbo
 }
 ```
 
-### （選用）指定 AI 模型
+### 指定 AI 模型
 
-不填會用程式內建預設。供應商換模型時，在這裡覆寫即可、免改程式：
+**一般用 GUI 即可**：選好引擎後，下方「模型」下拉選單可直接點選；也能手動輸入
+未列出的模型名稱。選完自動存進 config.json，不必手動編檔。
+
+下拉的清單維護在 `transcribe_gui.py` 的 `_ENGINE_MODELS`，供應商新增/淘汰模型時
+改那份清單再 `git pull` 即可。對應 config.json 欄位（手動編也可）：
 
 ```json
 {
@@ -282,3 +286,5 @@ tkinter 在 macOS 預設的 `Cmd+C/V/X/A` 常失靈，已由 `_enable_mac_clipbo
   "openai_model": "gpt-4o"
 }
 ```
+
+> 不填則用程式內建預設。本地引擎（Ollama / LM Studio）的模型仍直接打在 Key 欄位。
