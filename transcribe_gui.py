@@ -518,7 +518,10 @@ def whisper_worker(audio, out_dir, model_name, lang, prompt, write_srt, result_q
         if torch.cuda.is_available():
             device, gpu_name = "cuda", torch.cuda.get_device_name(0)
         elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
-            device, gpu_name = "mps", "Apple MPS"
+            # Apple MPS 缺少 Whisper 用到的稀疏張量運算
+            # (aten::_sparse_coo_tensor_with_dims_and_tensors / SparseMPS backend)，
+            # 在 MPS 上轉錄會直接崩潰，因此 Mac 上的一般 Whisper 引擎改用 CPU。
+            device, gpu_name = "cpu", "CPU（Mac 不支援 MPS 轉錄，已自動改用 CPU）"
         else:
             device, gpu_name = "cpu", "無"
 

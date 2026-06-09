@@ -463,9 +463,9 @@ done</pre>
   <details>
     <summary>⑦ 速度與其他</summary>
     <div class="body">
-      <p>• <strong>Apple Silicon(M 系列)</strong>:一般 Whisper 引擎支援 <strong>MPS 加速</strong>,轉錄較快。</p>
-      <p>• <strong>WhisperX 引擎</strong>在 Mac 目前只跑 CPU,功能正常但較慢 —— 想快就選一般 Whisper。</p>
-      <p>• 只想用「載入 .md 做摘要」這類純 AI 功能、不轉錄語音的話,完全不受上面這些影響,也更快。</p>
+      <p>• <strong>Mac 上語音轉錄都跑 CPU</strong>:一般 Whisper 與 WhisperX 引擎在 Mac 目前都用 CPU,功能正常但比 Windows + 顯卡慢。(一般 Whisper 因 Apple MPS 缺少它用到的稀疏張量運算、在 MPS 上會崩潰,所以程式自動改用 CPU,不是當機。)</p>
+      <p>• 想快一點:檔案不大時差異有限;真的很在意速度,Windows + NVIDIA 顯卡才有 CUDA 加速。</p>
+      <p>• 只想用「載入 .md 做摘要」這類純 AI 功能、不轉錄語音的話,完全不受上面影響,也更快。</p>
     </div>
   </details>
 

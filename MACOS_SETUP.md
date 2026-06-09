@@ -98,8 +98,10 @@ codesign --force --sign - "$SO"
    > whisperx 的 `DiarizationPipeline` 預設載入 `speaker-diarization-community-1`
    > （見 `whisperx/diarize.py`），**不是**舊版 `3.1`；同意錯模型頁 token 會被擋。
 
-3. **WhisperX 在 Mac 上只跑 CPU**：`whisperx_worker` 沒有 MPS 分支，
-   速度比 Windows + CUDA 慢，功能正常。一般 Whisper 引擎有 MPS 支援，速度較快。
+3. **Mac 上語音轉錄都跑 CPU**：WhisperX（`whisperx_worker` 無 MPS 分支）固然只跑 CPU；
+   一般 Whisper 引擎**也改成 CPU** —— 因為 Apple MPS 缺少 Whisper 用到的稀疏張量運算
+   （`aten::_sparse_coo_tensor_with_dims_and_tensors` / SparseMPS backend），在 MPS 上轉錄
+   會直接崩潰，故 `whisper_worker` 偵測到 MPS 時自動退回 CPU。功能正常，但比 Windows + CUDA 慢。
 
 4. **opencc-python-reimplemented**：在 Apple Silicon 上有時需要從原始碼編譯：
    ```bash
@@ -146,7 +148,7 @@ python -c "from torchcodec.decoders import AudioDecoder; print('OK')"
 ## ✅ 安裝結果（2026-06-02 完成）
 
 - venv：Python 3.11.15（Tcl/Tk 8.6），GUI 可正常啟動、不再 crash
-- torch 2.8.0，**MPS 加速可用**
+- torch 2.8.0（MPS 後端存在，但語音轉錄因缺稀疏運算改跑 CPU，見下方相容性表）
 - 所有 requirements 套件 import 正常（含 torchcodec / pyannote.audio）
 - ffmpeg：CLI 用 8.1.1；torchcodec 用 ffmpeg@7 函式庫
 
@@ -166,7 +168,7 @@ python transcribe_gui.py
 |------|------|
 | FFmpeg 路徑（硬寫死 Windows 路徑） | ✅ 已有 `if platform.system() == "Windows"` 保護 |
 | 字體設定 | ✅ macOS 自動用 `PingFang TC` |
-| MPS 加速（Whisper） | ✅ 已支援 |
+| MPS 加速（Whisper） | ❌ MPS 缺稀疏運算會崩潰，`whisper_worker` 自動退回 CPU |
 | MPS 加速（WhisperX） | ❌ 尚未支援，只跑 CPU |
 | pyannote 語者分離（torchcodec + ffmpeg@7） | ✅ 已修可用 |
 | GUI 啟動 | ✅ 已驗證可啟動，不再 crash |
