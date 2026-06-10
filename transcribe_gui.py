@@ -911,7 +911,7 @@ class TranscribeApp:
         self.root.configure(fg_color=BG)
 
         self.root.grid_columnconfigure(0, weight=1)
-        self.root.grid_rowconfigure(11, weight=1)
+        self.root.grid_rowconfigure(5, weight=1)  # Log 列撐開
 
         self.process = None
         self.result_q = None
@@ -998,11 +998,34 @@ class TranscribeApp:
     def _build_ui(self):
         F = ctk.CTkFont
 
-        # ── Row 0: 設定（模型 / 語言 / 引擎）──
-        settings = ctk.CTkFrame(self.root, fg_color=SURFACE, corner_radius=8)
-        settings.grid(row=0, column=0, sticky="we", padx=20, pady=(14, 4))
+        # ── 分頁：① 轉錄 / ② AI 後製 ──
+        self._TAB_TRANSCRIBE = "①  轉錄逐字稿"
+        self._TAB_AI = "②  AI 後製（校正 / 摘要）"
+        self.tabs = ctk.CTkTabview(
+            self.root, fg_color=BG,
+            segmented_button_fg_color=SURFACE,
+            segmented_button_selected_color=ACCENT,
+            segmented_button_selected_hover_color=ACCENT,
+            segmented_button_unselected_color=SURFACE,
+            segmented_button_unselected_hover_color=BORDER,
+            text_color=TEXT,
+        )
+        self.tabs.grid(row=0, column=0, sticky="we", padx=16, pady=(10, 2))
+        tab_t = self.tabs.add(self._TAB_TRANSCRIBE)
+        tab_ai = self.tabs.add(self._TAB_AI)
 
-        ctk.CTkLabel(settings, text="模型", fg_color="transparent", text_color=SUBTEXT,
+        # ════════ 分頁一：轉錄 ════════
+        ctk.CTkLabel(
+            tab_t, justify="left",
+            text="① 選音檔或貼 YouTube 網址　② 設好輸出資料夾　③ 按「開始轉錄」",
+            fg_color="transparent", text_color=SUBTEXT, font=F(FONT_UI, 12),
+        ).pack(anchor="w", padx=4, pady=(2, 8))
+
+        # 設定（轉錄模型 / 語言 / 轉錄引擎）
+        settings = ctk.CTkFrame(tab_t, fg_color=SURFACE, corner_radius=8)
+        settings.pack(fill="x", pady=(0, 4))
+
+        ctk.CTkLabel(settings, text="轉錄模型", fg_color="transparent", text_color=SUBTEXT,
                      font=F(FONT_UI, 12)).pack(side="left", padx=(14, 4))
         self.model_var = tk.StringVar(value="small")
         ctk.CTkComboBox(settings, variable=self.model_var,
@@ -1026,7 +1049,7 @@ class TranscribeApp:
                         dropdown_hover_color=BORDER,
                         font=F(FONT_UI, 12)).pack(side="left")
 
-        ctk.CTkLabel(settings, text="引擎", fg_color="transparent", text_color=SUBTEXT,
+        ctk.CTkLabel(settings, text="轉錄引擎", fg_color="transparent", text_color=SUBTEXT,
                      font=F(FONT_UI, 12)).pack(side="left", padx=(20, 6))
         self.engine_var = tk.StringVar(value="whisper")
         for val, label in [("whisper", "Whisper"), ("whisperx", "WhisperX（說話人辨識）")]:
@@ -1036,11 +1059,10 @@ class TranscribeApp:
                 text_color=TEXT, fg_color=ACCENT, hover_color=ACCENT,
                 font=F(FONT_UI, 12),
             ).pack(side="left", padx=(0, 12))
-        ctk.CTkLabel(settings, text="", fg_color="transparent").pack(side="left", padx=6)
 
-        # ── Row 1: 來源選擇（兩個方形按鈕，置中）──
-        source = ctk.CTkFrame(self.root, fg_color="transparent")
-        source.grid(row=1, column=0, pady=(16, 8))
+        # 來源選擇（兩個方形按鈕，置中）
+        source = ctk.CTkFrame(tab_t, fg_color="transparent")
+        source.pack(pady=(14, 6))
 
         audio_col = ctk.CTkFrame(source, fg_color="transparent")
         audio_col.pack(side="left", padx=28, anchor="n")
@@ -1093,10 +1115,8 @@ class TranscribeApp:
             font=F(FONT_UI, 12)
         ).pack(pady=(6, 0))
 
-        # ── Row 2: WhisperX 選項（預設隱藏）──
-        self.wx_frame = ctk.CTkFrame(self.root, fg_color="transparent")
-        self.wx_frame.grid(row=2, column=0, sticky="w", padx=20, pady=(0, 4))
-        self.wx_frame.grid_remove()
+        # WhisperX 選項（預設隱藏，選 WhisperX 才 pack 出來）
+        self.wx_frame = ctk.CTkFrame(tab_t, fg_color="transparent")
 
         ctk.CTkLabel(self.wx_frame, text="HF Token",
                      fg_color="transparent", text_color=TEXT,
@@ -1118,9 +1138,10 @@ class TranscribeApp:
                      fg_color="transparent", text_color=SUBTEXT,
                      font=F(FONT_UI, 13)).pack(side="left", padx=(6, 0))
 
-        # ── Row 3: 輸出 + 情境說明 ──
-        r_out = ctk.CTkFrame(self.root, fg_color="transparent")
-        r_out.grid(row=3, column=0, sticky="we", padx=20, pady=4)
+        # 輸出 + 情境說明
+        r_out = ctk.CTkFrame(tab_t, fg_color="transparent")
+        self.r_out = r_out
+        r_out.pack(fill="x", pady=4)
 
         self.prompt_var = tk.StringVar(value="以下是繁體中文對話。")
         ctk.CTkEntry(r_out, textvariable=self.prompt_var,
@@ -1143,9 +1164,9 @@ class TranscribeApp:
                         text_color=TEXT, font=F(FONT_UI, 13),
                         ).pack(side="left", padx=(12, 0))
 
-        # ── Row 4: ▶ ■ ──
-        trans_ctrl = ctk.CTkFrame(self.root, fg_color="transparent")
-        trans_ctrl.grid(row=4, column=0, pady=(10, 6))
+        # ▶ 開始轉錄 / ■ 停止
+        trans_ctrl = ctk.CTkFrame(tab_t, fg_color="transparent")
+        trans_ctrl.pack(pady=(10, 8))
         self.start_btn = ctk.CTkButton(
             trans_ctrl, text="▶  開始轉錄", command=self.start,
             fg_color=GREEN, hover_color="#219A52", text_color="white",
@@ -1160,9 +1181,16 @@ class TranscribeApp:
         )
         self.stop_btn.pack(side="left", padx=10)
 
-        # ── Row 5: AI 引擎 / Key（分兩行：引擎一行、Key 一行）──
-        ai_frame = ctk.CTkFrame(self.root, fg_color="transparent")
-        ai_frame.grid(row=5, column=0, sticky="we", padx=20, pady=(4, 4))
+        # ════════ 分頁二：AI 後製 ════════
+        ctk.CTkLabel(
+            tab_ai, justify="left",
+            text="轉錄完成會自動帶你到這頁；也可直接按下方「載入逐字稿」處理舊檔。\n"
+                 "步驟：① 選 AI 引擎　② 填 API Key 按「驗證」變綠　③ 點「校正逐字稿」或「產生摘要」",
+            fg_color="transparent", text_color=SUBTEXT, font=F(FONT_UI, 12),
+        ).pack(anchor="w", padx=4, pady=(2, 10))
+
+        ai_frame = ctk.CTkFrame(tab_ai, fg_color="transparent")
+        ai_frame.pack(fill="x", pady=(0, 4))
 
         # 第一行：AI 引擎選擇
         ai_engine_row = ctk.CTkFrame(ai_frame, fg_color="transparent")
@@ -1181,7 +1209,7 @@ class TranscribeApp:
 
         # 第二行：模型選擇（雲端引擎才顯示；可下拉點選，也可手動輸入）
         self.ai_model_row = ctk.CTkFrame(ai_frame, fg_color="transparent")
-        ctk.CTkLabel(self.ai_model_row, text="模型",
+        ctk.CTkLabel(self.ai_model_row, text="AI 模型",
                      fg_color="transparent", text_color=SUBTEXT,
                      font=F(FONT_UI, 13), width=72, anchor="e").pack(side="left", padx=(0, 8))
         self.ai_model_var = tk.StringVar(
@@ -1222,9 +1250,9 @@ class TranscribeApp:
         self.ai_model_var.trace_add("write", self._on_model_change)
         self._sync_model_widget(self.ai_engine_var.get())
 
-        # ── Row 6: 後製按鈕 ──
-        post_outer = ctk.CTkFrame(self.root, fg_color="transparent")
-        post_outer.grid(row=6, column=0, pady=(0, 4))
+        # 後製按鈕
+        post_outer = ctk.CTkFrame(tab_ai, fg_color="transparent")
+        post_outer.pack(pady=(10, 4))
         post_row = ctk.CTkFrame(post_outer, fg_color="transparent")
         post_row.pack()
         self.load_btn = ctk.CTkButton(
@@ -1256,9 +1284,10 @@ class TranscribeApp:
                      fg_color="transparent", text_color=ACCENT,
                      font=F(FONT_UI, 12)).pack(pady=(4, 0))
 
-        # ── Row 7: 計時器 + 百分比 ──
+        # ════════ 共用底部：計時 / 狀態 / 進度 / Log（兩個分頁都看得到）════════
+        # 計時器 + 百分比
         info_frame = ctk.CTkFrame(self.root, fg_color="transparent")
-        info_frame.grid(row=7, column=0, pady=(8, 2))
+        info_frame.grid(row=1, column=0, pady=(8, 2))
         self.timer_var = tk.StringVar(value="00:00:00")
         ctk.CTkLabel(info_frame, textvariable=self.timer_var,
                      fg_color="transparent", text_color=ACCENT,
@@ -1268,25 +1297,25 @@ class TranscribeApp:
                      fg_color="transparent", text_color=SUBTEXT,
                      font=F(FONT_UI, 16)).pack(side="left")
 
-        # ── Row 8: 狀態 ──
+        # 狀態
         self.status_label = ctk.CTkLabel(
             self.root, text="等待中...",
             fg_color="transparent", text_color=SUBTEXT,
             font=F(FONT_UI, 15, weight="bold"),
         )
-        self.status_label.grid(row=8, column=0)
+        self.status_label.grid(row=2, column=0)
 
-        # ── Row 9: 進度條 ──
+        # 進度條
         self.progress = ctk.CTkProgressBar(
             self.root, mode="determinate",
             fg_color=SURFACE, progress_color=ACCENT,
         )
         self.progress.set(0)
-        self.progress.grid(row=9, column=0, padx=20, pady=6, sticky="we")
+        self.progress.grid(row=3, column=0, padx=20, pady=6, sticky="we")
 
-        # ── Row 10: Log header ──
+        # Log header
         log_hdr = ctk.CTkFrame(self.root, fg_color="transparent")
-        log_hdr.grid(row=10, column=0, sticky="we", padx=20, pady=(4, 0))
+        log_hdr.grid(row=4, column=0, sticky="we", padx=20, pady=(4, 0))
         log_hdr.grid_columnconfigure(1, weight=1)
         ctk.CTkLabel(log_hdr, text="Log",
                      fg_color="transparent", text_color=SUBTEXT,
@@ -1295,7 +1324,7 @@ class TranscribeApp:
                      fg_color="transparent", text_color=SUBTEXT,
                      font=F(FONT_UI, 13)).grid(row=0, column=2, sticky="e")
 
-        # ── Row 11: Log (expands) ──
+        # Log (expands)
         self.log = ctk.CTkTextbox(
             self.root,
             fg_color=SURFACE, text_color=TEXT,
@@ -1303,7 +1332,7 @@ class TranscribeApp:
             height=110,
             state="disabled",
         )
-        self.log.grid(row=11, column=0, padx=20, pady=(2, 16), sticky="nswe")
+        self.log.grid(row=5, column=0, padx=20, pady=(2, 16), sticky="nswe")
 
     # ── YouTube 下載 ───────────────────────────────
     def download_youtube(self):
@@ -1417,9 +1446,9 @@ class TranscribeApp:
     # ── Callbacks ──────────────────────────────────
     def _on_engine_change(self):
         if self.engine_var.get() == "whisperx":
-            self.wx_frame.grid()
+            self.wx_frame.pack(fill="x", pady=(0, 4), before=self.r_out)
         else:
-            self.wx_frame.grid_remove()
+            self.wx_frame.pack_forget()
 
     def _sync_model_widget(self, engine):
         """切換引擎時更新模型下拉：雲端引擎顯示對應清單與已存值；
@@ -1656,7 +1685,7 @@ class TranscribeApp:
                 self.progress.set(1.0)
                 self.pct_var.set("100%")
                 self.log_write(f"完成！耗時 {elapsed}，儲存至：{data}")
-                self._set_status(f"轉錄完成（耗時 {elapsed}）！可繼續使用下方後製功能", GREEN)
+                self._set_status(f"轉錄完成（耗時 {elapsed}）！已切到「AI 後製」分頁", GREEN)
                 speakers = self._find_speakers(data)
                 if speakers:
                     dlg = SpeakerNameDialog(self.root, speakers)
@@ -1668,6 +1697,11 @@ class TranscribeApp:
                 self.correct_btn.configure(state="normal", fg_color=BLUE, text_color="white")
                 self.notes_btn.configure(state="normal", fg_color=BLUE, text_color="white")
                 self.export_srt_btn.configure(state="normal", fg_color=BLUE, text_color="white")
+                # 轉錄完成自動帶使用者到下一步（AI 後製分頁）
+                try:
+                    self.tabs.set(self._TAB_AI)
+                except Exception:
+                    pass
             else:
                 self.log_write(f"錯誤：{data}")
                 self._set_status(f"發生錯誤（耗時 {elapsed}）", RED)
