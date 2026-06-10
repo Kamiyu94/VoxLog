@@ -906,8 +906,8 @@ class TranscribeApp:
     def __init__(self, root):
         self.root = root
         self.root.title("VoxLog")
-        self.root.geometry("780x700")
-        self.root.minsize(700, 580)
+        self.root.geometry("780x760")
+        self.root.minsize(700, 620)
         self.root.configure(fg_color=BG)
 
         self.root.grid_columnconfigure(0, weight=1)
@@ -998,9 +998,9 @@ class TranscribeApp:
     def _build_ui(self):
         F = ctk.CTkFont
 
-        # ── 分頁：① 轉錄 / ② 逐字稿處理 ──
-        self._TAB_TRANSCRIBE = "①  轉錄逐字稿"
-        self._TAB_AI = "②  逐字稿處理（AI 校正 / 摘要 / 字幕檔）"
+        # ── 分頁：① 轉錄 / ② 逐字稿處理（加圖示讓分頁更醒目）──
+        self._TAB_TRANSCRIBE = "🎙️  ①  轉錄逐字稿"
+        self._TAB_AI = "📝  ②  逐字稿處理（AI 校正 / 摘要 / 字幕檔）"
         self.tabs = ctk.CTkTabview(
             self.root, fg_color=BG,
             segmented_button_fg_color=SURFACE,
@@ -1024,26 +1024,26 @@ class TranscribeApp:
             tab_t, justify="left",
             text="① 選音檔或貼 YouTube 網址　② 設好輸出資料夾　③ 按「開始轉錄」",
             fg_color="transparent", text_color=TEXT, font=F(FONT_UI, 16),
-        ).pack(anchor="w", padx=4, pady=(2, 10))
+        ).pack(anchor="w", padx=4, pady=(14, 10))
 
         # 設定（轉錄模型 / 語言 / 轉錄引擎）
         settings = ctk.CTkFrame(tab_t, fg_color=SURFACE, corner_radius=8)
-        settings.pack(fill="x", pady=(0, 4))
+        settings.pack(fill="x", pady=(0, 4), ipady=6)
 
         ctk.CTkLabel(settings, text="轉錄模型", fg_color="transparent", text_color=SUBTEXT,
-                     font=F(FONT_UI, 12)).pack(side="left", padx=(14, 4))
+                     font=F(FONT_UI, 14)).pack(side="left", padx=(14, 4))
         self.model_var = tk.StringVar(value="small")
         ctk.CTkComboBox(settings, variable=self.model_var,
                         values=["tiny", "base", "small", "medium", "large"],
-                        width=100, state="readonly",
+                        width=104, state="readonly",
                         fg_color=BG, text_color=TEXT, button_color=BORDER,
                         button_hover_color=ACCENT, border_color=BORDER,
                         dropdown_fg_color=SURFACE, dropdown_text_color=TEXT,
                         dropdown_hover_color=BORDER,
-                        font=F(FONT_UI, 12)).pack(side="left")
+                        font=F(FONT_UI, 13)).pack(side="left")
 
         ctk.CTkLabel(settings, text="語言", fg_color="transparent", text_color=SUBTEXT,
-                     font=F(FONT_UI, 12)).pack(side="left", padx=(16, 4))
+                     font=F(FONT_UI, 14)).pack(side="left", padx=(16, 4))
         self.lang_var = tk.StringVar(value="中文")
         ctk.CTkComboBox(settings, variable=self.lang_var,
                         values=list(LANG_MAP.keys()),
@@ -1052,18 +1052,18 @@ class TranscribeApp:
                         button_hover_color=ACCENT, border_color=BORDER,
                         dropdown_fg_color=SURFACE, dropdown_text_color=TEXT,
                         dropdown_hover_color=BORDER,
-                        font=F(FONT_UI, 12)).pack(side="left")
+                        font=F(FONT_UI, 13)).pack(side="left")
 
         ctk.CTkLabel(settings, text="轉錄引擎", fg_color="transparent", text_color=SUBTEXT,
-                     font=F(FONT_UI, 12)).pack(side="left", padx=(20, 6))
+                     font=F(FONT_UI, 14)).pack(side="left", padx=(18, 6))
         self.engine_var = tk.StringVar(value="whisper")
         for val, label in [("whisper", "Whisper"), ("whisperx", "WhisperX（說話人辨識）")]:
             ctk.CTkRadioButton(
                 settings, text=label, variable=self.engine_var,
                 value=val, command=self._on_engine_change,
                 text_color=TEXT, fg_color=ACCENT, hover_color=ACCENT,
-                font=F(FONT_UI, 12),
-            ).pack(side="left", padx=(0, 12))
+                font=F(FONT_UI, 14),
+            ).pack(side="left", padx=(0, 10))
 
         # 來源選擇（兩個方形按鈕，置中）
         source = ctk.CTkFrame(tab_t, fg_color="transparent")
@@ -1192,7 +1192,7 @@ class TranscribeApp:
             text="轉錄完成會自動帶你到這頁；也可直接按下方「載入逐字稿」處理舊檔。\n"
                  "① 選 AI 引擎　② 填 API Key 按「驗證」變綠　③ 點「校正逐字稿 / 產生摘要 / 匯出 SRT」",
             fg_color="transparent", text_color=TEXT, font=F(FONT_UI, 16),
-        ).pack(anchor="w", padx=4, pady=(2, 12))
+        ).pack(anchor="w", padx=4, pady=(14, 12))
 
         ai_frame = ctk.CTkFrame(tab_ai, fg_color="transparent")
         ai_frame.pack(fill="x", pady=(0, 4))
@@ -1334,7 +1334,7 @@ class TranscribeApp:
             self.root,
             fg_color=SURFACE, text_color=TEXT,
             font=F("Consolas", 13),
-            height=56,
+            height=112,
             state="disabled",
         )
         self.log.grid(row=5, column=0, padx=20, pady=(2, 12), sticky="we")
