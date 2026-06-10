@@ -902,6 +902,52 @@ class SpeakerNameDialog(ctk.CTkToplevel):
         self.destroy()
 
 
+MODEL_HELP_TEXT = (
+    "模型越大越準，但越慢、越吃記憶體：\n"
+    "• small（約 2GB）：快；安靜環境、標準國語就夠用\n"
+    "• medium（約 5GB）：較準；扛得住口音、專有名詞、中英夾雜\n"
+    "• large（約 10GB）：最準但最慢\n"
+    "• tiny / base：最省資源，僅測試用\n\n"
+    "8GB 記憶體的電腦請用 small；錯字可在下一步\n"
+    "「AI 校正逐字稿」補回。"
+)
+
+
+class _Tooltip:
+    """滑鼠移上去顯示說明的小浮窗（tkinter 沒內建，自己做一個）。"""
+
+    def __init__(self, widget, text):
+        self.widget = widget
+        self.text = text
+        self.tip = None
+        widget.bind("<Enter>", self._show, add="+")
+        widget.bind("<Leave>", self._hide, add="+")
+
+    def _show(self, _=None):
+        if self.tip or not self.text:
+            return
+        x = self.widget.winfo_rootx() + self.widget.winfo_width() + 8
+        y = self.widget.winfo_rooty() - 2
+        self.tip = tk.Toplevel(self.widget)
+        self.tip.wm_overrideredirect(True)
+        self.tip.wm_geometry(f"+{x}+{y}")
+        try:
+            self.tip.attributes("-topmost", True)
+        except Exception:
+            pass
+        # 外框用 BORDER、內層 SURFACE，做出細邊框效果
+        outer = tk.Frame(self.tip, bg=BORDER)
+        outer.pack()
+        tk.Label(outer, text=self.text, justify="left",
+                 bg=SURFACE, fg=TEXT, font=(FONT_UI, 12),
+                 padx=12, pady=10).pack(padx=1, pady=1)
+
+    def _hide(self, _=None):
+        if self.tip:
+            self.tip.destroy()
+            self.tip = None
+
+
 class TranscribeApp:
     def __init__(self, root):
         self.root = root
@@ -1041,6 +1087,10 @@ class TranscribeApp:
                         dropdown_fg_color=SURFACE, dropdown_text_color=TEXT,
                         dropdown_hover_color=BORDER,
                         font=F(FONT_UI, 13)).pack(side="left")
+        model_info = ctk.CTkLabel(settings, text="ⓘ", fg_color="transparent",
+                                   text_color=ACCENT, font=F(FONT_UI, 15), cursor="hand2")
+        model_info.pack(side="left", padx=(4, 0))
+        _Tooltip(model_info, MODEL_HELP_TEXT)
 
         ctk.CTkLabel(settings, text="語言", fg_color="transparent", text_color=SUBTEXT,
                      font=F(FONT_UI, 14)).pack(side="left", padx=(16, 4))
