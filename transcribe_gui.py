@@ -906,12 +906,12 @@ class TranscribeApp:
     def __init__(self, root):
         self.root = root
         self.root.title("VoxLog")
-        self.root.geometry("780x720")
+        self.root.geometry("780x700")
         self.root.minsize(700, 580)
         self.root.configure(fg_color=BG)
 
         self.root.grid_columnconfigure(0, weight=1)
-        self.root.grid_rowconfigure(5, weight=1)  # Log 列撐開
+        self.root.grid_rowconfigure(0, weight=1)  # 分頁區撐開，log 維持固定小尺寸
 
         self.process = None
         self.result_q = None
@@ -998,9 +998,9 @@ class TranscribeApp:
     def _build_ui(self):
         F = ctk.CTkFont
 
-        # ── 分頁：① 轉錄 / ② AI 後製 ──
+        # ── 分頁：① 轉錄 / ② 逐字稿處理 ──
         self._TAB_TRANSCRIBE = "①  轉錄逐字稿"
-        self._TAB_AI = "②  AI 後製（校正 / 摘要）"
+        self._TAB_AI = "②  逐字稿處理（AI 校正 / 摘要 / 字幕檔）"
         self.tabs = ctk.CTkTabview(
             self.root, fg_color=BG,
             segmented_button_fg_color=SURFACE,
@@ -1010,7 +1010,12 @@ class TranscribeApp:
             segmented_button_unselected_hover_color=BORDER,
             text_color=TEXT,
         )
-        self.tabs.grid(row=0, column=0, sticky="we", padx=16, pady=(10, 2))
+        self.tabs.grid(row=0, column=0, sticky="nswe", padx=16, pady=(10, 2))
+        # 放大分頁按鈕，讓使用者清楚看到目前在哪一頁
+        try:
+            self.tabs._segmented_button.configure(font=F(FONT_UI, 16, weight="bold"), height=40)
+        except Exception:
+            pass
         tab_t = self.tabs.add(self._TAB_TRANSCRIBE)
         tab_ai = self.tabs.add(self._TAB_AI)
 
@@ -1018,8 +1023,8 @@ class TranscribeApp:
         ctk.CTkLabel(
             tab_t, justify="left",
             text="① 選音檔或貼 YouTube 網址　② 設好輸出資料夾　③ 按「開始轉錄」",
-            fg_color="transparent", text_color=SUBTEXT, font=F(FONT_UI, 12),
-        ).pack(anchor="w", padx=4, pady=(2, 8))
+            fg_color="transparent", text_color=TEXT, font=F(FONT_UI, 16),
+        ).pack(anchor="w", padx=4, pady=(2, 10))
 
         # 設定（轉錄模型 / 語言 / 轉錄引擎）
         settings = ctk.CTkFrame(tab_t, fg_color=SURFACE, corner_radius=8)
@@ -1185,9 +1190,9 @@ class TranscribeApp:
         ctk.CTkLabel(
             tab_ai, justify="left",
             text="轉錄完成會自動帶你到這頁；也可直接按下方「載入逐字稿」處理舊檔。\n"
-                 "步驟：① 選 AI 引擎　② 填 API Key 按「驗證」變綠　③ 點「校正逐字稿」或「產生摘要」",
-            fg_color="transparent", text_color=SUBTEXT, font=F(FONT_UI, 12),
-        ).pack(anchor="w", padx=4, pady=(2, 10))
+                 "① 選 AI 引擎　② 填 API Key 按「驗證」變綠　③ 點「校正逐字稿 / 產生摘要 / 匯出 SRT」",
+            fg_color="transparent", text_color=TEXT, font=F(FONT_UI, 16),
+        ).pack(anchor="w", padx=4, pady=(2, 12))
 
         ai_frame = ctk.CTkFrame(tab_ai, fg_color="transparent")
         ai_frame.pack(fill="x", pady=(0, 4))
@@ -1324,15 +1329,15 @@ class TranscribeApp:
                      fg_color="transparent", text_color=SUBTEXT,
                      font=F(FONT_UI, 13)).grid(row=0, column=2, sticky="e")
 
-        # Log (expands)
+        # Log（固定小尺寸，不再吃掉版面）
         self.log = ctk.CTkTextbox(
             self.root,
             fg_color=SURFACE, text_color=TEXT,
             font=F("Consolas", 13),
-            height=110,
+            height=56,
             state="disabled",
         )
-        self.log.grid(row=5, column=0, padx=20, pady=(2, 16), sticky="nswe")
+        self.log.grid(row=5, column=0, padx=20, pady=(2, 12), sticky="we")
 
     # ── YouTube 下載 ───────────────────────────────
     def download_youtube(self):
@@ -1685,7 +1690,7 @@ class TranscribeApp:
                 self.progress.set(1.0)
                 self.pct_var.set("100%")
                 self.log_write(f"完成！耗時 {elapsed}，儲存至：{data}")
-                self._set_status(f"轉錄完成（耗時 {elapsed}）！已切到「AI 後製」分頁", GREEN)
+                self._set_status(f"轉錄完成（耗時 {elapsed}）！已切到「逐字稿處理」分頁", GREEN)
                 speakers = self._find_speakers(data)
                 if speakers:
                     dlg = SpeakerNameDialog(self.root, speakers)
