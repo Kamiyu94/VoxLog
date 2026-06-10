@@ -1,0 +1,50 @@
+# 更新紀錄 Changelog
+
+本檔記錄 VoxLog 對使用者有感的變動。技術細節見各 commit。
+
+## 2026-06-10
+
+針對同事在 MacBook Air M2（8GB）實際安裝、使用時踩到的問題做的一輪修正與體驗改善。
+更新方式見 `MACOS_SETUP.html` / `WINDOWS_SETUP.html` 的「🔄 之後怎麼更新到最新版」。
+
+### 🐛 修正
+
+- **貼上 API Key 不再出錯（macOS）** — Key 欄位是星號遮罩，看不到內容；舊版在 Mac 上
+  Cmd+A 全選不可靠，貼上會把舊殘值黏在新 key 後面變成壞字串，導致 Gemini 一直回 401。
+  現在遮罩欄位（API Key / Token）**貼上＝整段取代，並自動去除前後空白/換行**，直接貼就會通，
+  不必再手動編 `config.json`。Cmd+A 全選也改成可靠的手動版。
+  （Windows 原生 Ctrl+A/V 正常，本來就沒這問題。）
+  commit `100bca2`
+
+- **8GB 機器一跑就閃退** — 預設轉錄模型從 `medium`（約 5GB）改為 `small`（約 2GB），
+  記憶體小的電腦不會一開箱就爆。要更高精度可在介面手動選 `medium` / `large`。
+  低階機器並建議用 **Whisper**（非 WhisperX，後者另載對齊與分離模型、更吃記憶體）。
+  commit `755eb3c`
+
+### ✨ 新功能
+
+- **完成後自動開檔（Mac / Windows 通用）** — 逐字稿轉錄、AI 校正、產生摘要完成後，
+  會自動用系統預設程式打開檔案給使用者過目，不用自己去資料夾找。
+  commit `0d63288`
+
+- **摘要輸出改成 Word 檔（.docx）** — 「產生摘要」從 Markdown `_摘要.md` 改為
+  `_摘要.docx`，Word / Pages 直接開；標題、項目清單、待辦事項表格、行內粗體都會排好。
+  （新增相依套件 `python-docx`，更新後第一次啟動會自動補裝。）
+  commit `0d63288`
+
+- **打 `voxlog` 一個字就能啟動（Windows）** — 對齊 Mac 的做法。第一次雙擊 `VoxLog.bat`
+  時會自動把 `voxlog.cmd` 註冊進 `%LOCALAPPDATA%\Microsoft\WindowsApps`（預設就在 PATH 上，
+  免改 PATH、免管理員權限）。之後在任何終端機打 `voxlog` 即可開（需新開終端機視窗才認得）。
+  commit `11ad244`
+
+### 🔧 體驗與相容性
+
+- **Windows 更新會自動補裝新套件** — `VoxLog.bat` 原本「套件只裝第一次」，更新後新套件
+  （如 `python-docx`）不會裝、摘要會壞。現在會比對 `requirements.txt`，**有變動就自動補裝**；
+  既有安裝下次雙擊即自動補上。
+  commit `5080be8`
+
+- **安裝文件補強** — `MACOS_SETUP.html` 更新章節加上「本次新功能」與「更新需重跑
+  `pip install -r requirements.txt`」提醒，並把 401 的手動排除標註為「舊版才需要」；
+  `WINDOWS_SETUP.html` 新增完整的「更新章節」與 `voxlog` 指令說明。
+  commit `9ba5067`、`11ad244`
