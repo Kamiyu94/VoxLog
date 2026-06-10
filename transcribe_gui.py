@@ -852,7 +852,7 @@ def _make_yt_icon(size=22):
 
 
 class SpeakerNameDialog(ctk.CTkToplevel):
-    def __init__(self, parent, speakers):
+    def __init__(self, parent, speakers, samples=None):
         super().__init__(parent)
         self.title("設定說話者名稱")
         self.resizable(False, False)
@@ -860,27 +860,45 @@ class SpeakerNameDialog(ctk.CTkToplevel):
         self.grab_set()
         self.result = None
         self.entries = {}
+        samples = samples or {}
 
         ctk.CTkLabel(
             self,
-            text=f"辨識出 {len(speakers)} 位說話者，已填入預設名稱，可自行修改：",
+            text=f"辨識出 {len(speakers)} 位說話者，請依「代表發言」判斷各是誰、填入名稱：",
             fg_color="transparent", text_color=TEXT,
-            font=ctk.CTkFont(FONT_UI, 13),
-        ).pack(anchor="w", padx=20, pady=(18, 10))
+            font=ctk.CTkFont(FONT_UI, 14),
+        ).pack(anchor="w", padx=20, pady=(18, 4))
+        ctk.CTkLabel(
+            self,
+            text="（不確定就先留原樣或「略過」，逐字稿裡的代表發言可幫你回頭對照）",
+            fg_color="transparent", text_color=SUBTEXT,
+            font=ctk.CTkFont(FONT_UI, 12),
+        ).pack(anchor="w", padx=20, pady=(0, 10))
 
         for spk in speakers:
-            row_frame = ctk.CTkFrame(self, fg_color="transparent")
-            row_frame.pack(fill="x", padx=20, pady=4)
-            ctk.CTkLabel(row_frame, text=spk,
-                         fg_color="transparent", text_color=SUBTEXT,
-                         font=ctk.CTkFont(FONT_UI, 12),
-                         width=110, anchor="e").pack(side="left", padx=(0, 10))
+            row_frame = ctk.CTkFrame(self, fg_color=SURFACE, corner_radius=8)
+            row_frame.pack(fill="x", padx=20, pady=5, ipady=4)
+            top = ctk.CTkFrame(row_frame, fg_color="transparent")
+            top.pack(fill="x", padx=10, pady=(6, 2))
+            ctk.CTkLabel(top, text=spk,
+                         fg_color="transparent", text_color=ACCENT,
+                         font=ctk.CTkFont(FONT_UI, 13, weight="bold"),
+                         width=110, anchor="w").pack(side="left", padx=(0, 10))
             var = tk.StringVar(value=spk)
-            ctk.CTkEntry(row_frame, textvariable=var, width=200,
-                         fg_color=SURFACE, text_color=TEXT,
+            ctk.CTkEntry(top, textvariable=var, width=220,
+                         placeholder_text="輸入這位的名稱…",
+                         fg_color=BG, text_color=TEXT,
                          border_color=BORDER, border_width=1,
-                         font=ctk.CTkFont(FONT_UI, 12)).pack(side="left")
+                         font=ctk.CTkFont(FONT_UI, 13)).pack(side="left")
             self.entries[spk] = var
+            quote = samples.get(spk, "")
+            if quote:
+                ctk.CTkLabel(
+                    row_frame, text=f"代表發言：「{quote}」",
+                    fg_color="transparent", text_color=SUBTEXT,
+                    font=ctk.CTkFont(FONT_UI, 12), justify="left",
+                    wraplength=380, anchor="w",
+                ).pack(fill="x", anchor="w", padx=10, pady=(0, 6))
 
         btn_frame = ctk.CTkFrame(self, fg_color="transparent")
         btn_frame.pack(pady=(12, 18), padx=20, fill="x")
@@ -1743,7 +1761,8 @@ class TranscribeApp:
                 self._set_status(f"轉錄完成（耗時 {elapsed}）！已切到「逐字稿處理」分頁", GREEN)
                 speakers = self._find_speakers(data)
                 if speakers:
-                    dlg = SpeakerNameDialog(self.root, speakers)
+                    samples = self._speaker_samples(data, speakers)
+                    dlg = SpeakerNameDialog(self.root, speakers, samples)
                     if dlg.result:
                         self._rename_speakers(data, dlg.result)
                 self.transcript_path = data
@@ -1894,6 +1913,27 @@ class TranscribeApp:
         with open(path, "r", encoding="utf-8") as f:
             content = f.read()
         return sorted(set(re.findall(r"SPEAKER_\d+", content)))
+
+    def _speaker_samples(self, path, speakers, max_len=90):
+        """為每位說話者抓一句「最長的代表發言」，當作標名時的判斷提示。"""
+        best = {spk: "" for spk in speakers}
+        current = None
+        with open(path, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.rstrip("\n")
+                m = re.match(r"^(SPEAKER_\d+)：", line)
+                if m:
+                    current = m.group(1)
+                    continue
+                if current in best:
+                    text = re.sub(r"^\[\d{2}:\d{2} --> \d{2}:\d{2}\]\s*", "", line).strip()
+                    if len(text) > len(best[current]):
+                        best[current] = text
+        samples = {}
+        for spk in speakers:
+            t = best[spk]
+            samples[spk] = (t[:max_len] + "…") if len(t) > max_len else t
+        return samples
 
     def _rename_speakers(self, path, name_map):
         with open(path, "r", encoding="utf-8") as f:
