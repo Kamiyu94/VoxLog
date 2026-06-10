@@ -738,7 +738,7 @@ python transcribe_gui.py</code></pre>
           <h3>選擇轉錄引擎與模型</h3>
           <p><strong>Whisper</strong>：穩定，無說話人分離。<br>
           <strong>WhisperX</strong>：較快，支援辨識多位說話者（需 HuggingFace Token）。</p>
-          <p>模型建議：<code>large-v3</code>（精準）或 <code>medium</code>（快速）。</p>
+          <p>模型建議：<code>small</code>（預設，快又省記憶體）、<code>medium</code>（較準）、<code>large</code>（最準最慢）。記憶體小（如 8GB）請用 <code>small</code>；GUI 的「轉錄模型」旁有 ⓘ 說明可參考。</p>
         </div>
       </div>
       <div class="step">
@@ -752,10 +752,10 @@ python transcribe_gui.py</code></pre>
         <div class="step-num"></div>
         <div class="step-body">
           <h3>AI 後製（選用）</h3>
-          <p>選擇 AI 引擎（Ollama / Claude / Gemini）後可執行：</p>
+          <p>選擇 AI 引擎（Claude / Gemini / ChatGPT，或本機的 Ollama / LM Studio）後可執行：</p>
           <ul style="font-size:0.88rem; color:var(--subtext); padding-left:18px; margin-top:6px;">
             <li><strong>校正逐字稿</strong>：修正空耳錯字，產生 <code>_transcript_corrected.txt</code></li>
-            <li><strong>產生摘要</strong>：整理重點、人物、議題，產生 <code>_摘要.md</code></li>
+            <li><strong>產生摘要</strong>：整理重點、人物、議題，產生 Word 檔 <code>_摘要.docx</code></li>
             <li><strong>匯出 SRT</strong>：語意切句，輸出適合後製的字幕 SRT</li>
           </ul>
         </div>
