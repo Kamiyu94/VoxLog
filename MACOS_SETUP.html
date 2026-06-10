@@ -319,11 +319,23 @@ git branch -M main</pre>
     <button class="copy">複製</button>
     <pre>git pull</pre>
   </div>
-  <p class="muted">如果更新後需要的套件有變動,再啟用環境補裝一次:</p>
+  <p class="muted">接著啟用環境、補裝可能新增的套件(這步很快,沒新套件也不會有壞處):</p>
   <div class="code">
     <button class="copy">複製</button>
     <pre>source venv/bin/activate
 pip install -r requirements.txt</pre>
+  </div>
+  <p class="muted">更新完打 <code>voxlog</code> 重開 App 即可。</p>
+
+  <div class="note tip">
+    <span class="ic">✨ 這次更新有什麼新東西?</span>
+    <ul style="margin:6px 0 0; padding-left:20px;">
+      <li><strong>貼 API Key 不再出錯:</strong>Key 欄位現在「貼上=整段取代並自動去除前後空白」,不會再把舊殘值黏成壞字串(之前 Gemini 一直 401 的元兇)。直接在 App 裡貼 Key 就會通,不用再手動編 <code>config.json</code>。</li>
+      <li><strong>完成後自動開檔:</strong>逐字稿、AI 校正、摘要做完會自動用系統預設程式打開給你看,不用自己去資料夾找。</li>
+      <li><strong>摘要改成 Word 檔(.docx):</strong>「產生摘要」現在直接輸出 <code>_摘要.docx</code>,Word / Pages 直接開,標題、清單、待辦表格都排好。</li>
+      <li><strong>低階機器更穩:</strong>預設轉錄模型改為較省記憶體的 <code>small</code>,8GB 的 Mac 不會一跑就閃退(要更高精度再手動選 <code>medium</code>/<code>large</code>)。</li>
+    </ul>
+    <p style="margin:6px 0 0;">⚠️ 因為這次新增了產生 Word 檔的套件,<strong>更新後請務必跑上面那行 <code>pip install -r requirements.txt</code></strong>,否則「產生摘要」會失敗。</p>
   </div>
 
   <!-- 疑難排解 -->
@@ -424,7 +436,7 @@ done</pre>
         <pre>https://generativelanguage.googleapis.com/v1beta/models?key=你的KEY</pre>
       </div>
 
-      <p style="margin-top:14px;"><strong>原因 2:key 沒貼乾淨。</strong>Key 欄位用 <code>*</code> 星號遮住,看不到內容。如果欄位裡原本有殘缺的舊 key,你又沒清掉就貼,新 key 會<strong>接在後面變成一長串壞東西</strong>。<strong>解法:</strong>點進欄位,把裡面<strong>整個刪乾淨</strong>(按住 Delete 刪到空),再貼一次乾淨的 key。</p>
+      <p style="margin-top:14px;"><strong>原因 2:key 沒貼乾淨(舊版才會遇到)。</strong>Key 欄位用 <code>*</code> 星號遮住,看不到內容;舊版若欄位裡有殘缺的舊 key、又沒清掉就貼,新 key 會<strong>接在後面變成一長串壞東西</strong>。<strong>新版已修正</strong>:在 Key 欄位貼上時會自動「整段取代+去除前後空白」,直接貼就會通。所以<strong>先照「🔄 之後怎麼更新到最新版」更新一次</strong>,多半就解決了。萬一還在舊版,手動解:點進欄位 → 整個刪乾淨(按住 Delete 刪到空)→ 再貼一次乾淨的 key。</p>
 
       <div class="note tip">
         <span class="ic">🛟 終極解法:直接寫進設定檔,完全繞過輸入框</span>如果上面都試了還是失敗,在 VoxLog 資料夾內開設定檔:
