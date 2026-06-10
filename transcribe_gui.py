@@ -952,8 +952,8 @@ class TranscribeApp:
     def __init__(self, root):
         self.root = root
         self.root.title("VoxLog")
-        self.root.geometry("780x760")
-        self.root.minsize(700, 620)
+        self.root.geometry("780x810")
+        self.root.minsize(700, 670)
         self.root.configure(fg_color=BG)
 
         self.root.grid_columnconfigure(0, weight=1)
@@ -1384,7 +1384,7 @@ class TranscribeApp:
             self.root,
             fg_color=SURFACE, text_color=TEXT,
             font=F("Consolas", 13),
-            height=112,
+            height=160,
             state="disabled",
         )
         self.log.grid(row=5, column=0, padx=20, pady=(2, 12), sticky="we")
