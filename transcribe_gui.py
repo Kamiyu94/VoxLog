@@ -76,43 +76,49 @@ CORRECT_PROMPT = """以下是一份語音辨識產生的逐字稿，可能含有
 逐字稿內容：
 {transcript}"""
 
-NOTES_PROMPT = """以下是一份逐字稿（可能是會議、訪談或影片內容），請整理成結構化的摘要。{context}
+NOTES_PROMPT = """你是專業的會議記錄整理者。以下是一份逐字稿（可能是會議、訪談、教學或影片內容）。{context}
 
-逐字稿內容：
-{transcript}
+請產出一份「結構清楚、敘述完整、可直接交付」的繁體中文摘要，品質對標專業會議紀錄工具。要求：
+- 不要只丟零碎條列；每個主題段落要有完整敘述（2–5 句），把來龍去脈、原因、結論講清楚。
+- 若逐字稿有 SPEAKER 或人名，適當標記是誰說的、誰負責什麼。
+- 只根據逐字稿內容，不要杜撰；資訊不足處寫「（逐字稿未明確說明）」。
 
-請輸出以下格式：
-# 摘要
+嚴格使用以下 Markdown 格式輸出（標題、清單、checkbox 都要照格式）：
 
-## 基本資訊
-- 日期：
-- 參與者：
+# （為這場內容下一個精準、具體的標題）
 
-## 重點摘要
-（3-5個重點）
+## 執行摘要
+（用一段 150–250 字，把整場的背景、核心重點、結論與目標濃縮成流暢的一段話。）
 
-## 討論內容
-（按主題整理，標記說話者）
+## 重點主題
+（依主題切分，每個主題一個 ### 小標；小標後接一段完整敘述，必要時再用 - 補關鍵細節。要涵蓋討論的主要段落。）
 
-## 決策事項
-（本次討論確認的決定，若無則寫「無」）
+### （主題一的標題）
+（敘述段落）
+- （關鍵細節，可省略）
 
-## 待辦事項
-| 負責人 | 事項 | 期限 |
-|--------|------|------|
+### （主題二的標題）
+（敘述段落）
+
+## 決策與原則
+（本場確立的決定、共識或工作原則；若無則寫「無」。）
+- （條列）
+
+## 行動項目
+（依負責人分組；每條用 checkbox，事項後用破折號標註期限，沒有明確期限就寫 [TBD]。）
+
+**@（負責人A）**
+- [ ] （事項） — [Deadline:（日期）]
+- [ ] （事項） — [TBD]
+
+**@（負責人B）**
+- [ ] （事項） — [TBD]
 
 ## 標籤
+（3–8 個關鍵詞，每個前面加 #，同一行以空格分隔，例：#專案管理 #FactCheck #時程規劃）
 
-### 人物標籤
-（列出影片中出現或被提到的人名，每個一行，格式：`#人名`；若無則寫「無」）
-
-### 主題標籤
-（3–5個主要主題，每個一行，格式：`#主題`）
-
-### 議題標籤
-（5–8個具體討論的議題或關鍵詞，每個一行，格式：`#議題`）
-
-請用繁體中文輸出。"""
+逐字稿內容：
+{transcript}"""
 
 
 def load_config():
@@ -488,8 +494,11 @@ def _open_file(path):
 
 
 def _write_summary_docx(md_text, out_path):
-    """把 AI 產出的 Markdown 摘要轉成 .docx（處理標題、清單、表格、**粗體**）。"""
+    """把 AI 產出的 Markdown 摘要轉成精緻 .docx（標題分隔線、checkbox、清單、表格、**粗體**）。"""
     from docx import Document
+    from docx.shared import Pt
+    from docx.oxml import OxmlElement
+    from docx.oxml.ns import qn
 
     def add_runs(paragraph, text):
         # 行內 **粗體**：split 後奇數段就是粗體內容
@@ -499,6 +508,18 @@ def _write_summary_docx(md_text, out_path):
             run = paragraph.add_run(part)
             if idx % 2 == 1:
                 run.bold = True
+
+    def add_bottom_border(paragraph):
+        # 在段落底部加一條淺灰分隔線（仿專業摘要的章節分隔）
+        pPr = paragraph._p.get_or_add_pPr()
+        pBdr = OxmlElement("w:pBdr")
+        bottom = OxmlElement("w:bottom")
+        bottom.set(qn("w:val"), "single")
+        bottom.set(qn("w:sz"), "6")
+        bottom.set(qn("w:space"), "4")
+        bottom.set(qn("w:color"), "CCCCCC")
+        pBdr.append(bottom)
+        pPr.append(pBdr)
 
     doc = Document()
     lines = md_text.splitlines()
@@ -529,7 +550,22 @@ def _write_summary_docx(md_text, out_path):
         # 標題（必須是 # 後接空白；# 人名 標籤無空白，不會誤判）
         hm = re.match(r"^(#{1,6})\s+(.*)", stripped)
         if hm:
-            doc.add_heading(hm.group(2).strip(), level=min(len(hm.group(1)), 4))
+            level = min(len(hm.group(1)), 4)
+            h = doc.add_heading(hm.group(2).strip(), level=level)
+            h.paragraph_format.space_before = Pt(10 if level >= 2 else 0)
+            h.paragraph_format.space_after = Pt(4)
+            if level <= 2:  # H1 / H2 加章節分隔線
+                add_bottom_border(h)
+            i += 1
+            continue
+        # 行動項目 checkbox：- [ ] 或 - [x]
+        cm = re.match(r"^[-*]\s+\[([ xX])\]\s+(.*)", stripped)
+        if cm:
+            box = "☑" if cm.group(1).lower() == "x" else "☐"
+            p = doc.add_paragraph()
+            p.paragraph_format.left_indent = Pt(18)
+            p.add_run(box + "  ")
+            add_runs(p, cm.group(2).strip())
             i += 1
             continue
         # 項目清單
@@ -543,7 +579,9 @@ def _write_summary_docx(md_text, out_path):
             i += 1
             continue
         # 一般段落
-        add_runs(doc.add_paragraph(), stripped)
+        p = doc.add_paragraph()
+        p.paragraph_format.space_after = Pt(6)
+        add_runs(p, stripped)
         i += 1
 
     doc.save(out_path)
