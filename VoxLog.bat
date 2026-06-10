@@ -51,11 +51,19 @@ if not exist "venv\Scripts\python.exe" (
   )
 )
 
-REM ---------- 4. 安裝套件（僅第一次） ----------
-if not exist "venv\.voxlog_installed" (
+REM ---------- 4. 安裝套件（首次完整安裝；之後只在 requirements.txt 變動時自動補裝） ----------
+set "NEED_INSTALL="
+if not exist "venv\.voxlog_installed" set "NEED_INSTALL=1"
+if not exist "venv\.voxlog_reqs" set "NEED_INSTALL=1"
+if exist "venv\.voxlog_reqs" (
+  fc /b requirements.txt "venv\.voxlog_reqs" >nul 2>nul || set "NEED_INSTALL=1"
+)
+
+if defined NEED_INSTALL (
   echo.
-  echo  [*] 安裝相依套件中... 其中 torch 約 2GB，
-  echo      網路要穩、請耐心等待（可能 10 分鐘以上，畫面沒動不是當機）。
+  echo  [*] 安裝/更新相依套件中... 首次含 torch 約 2GB，
+  echo      網路要穩、請耐心等待（首次可能 10 分鐘以上，畫面沒動不是當機）。
+  echo      更新時只會補裝新增的套件，很快。
   echo.
   "venv\Scripts\python.exe" -m pip install --upgrade pip
   "venv\Scripts\python.exe" -m pip install -r requirements.txt
@@ -66,9 +74,10 @@ if not exist "venv\.voxlog_installed" (
     exit /b 1
   )
   echo installed> "venv\.voxlog_installed"
-  echo  [OK] 套件安裝完成！
+  copy /y requirements.txt "venv\.voxlog_reqs" >nul
+  echo  [OK] 套件已就緒！
 ) else (
-  echo  [OK] 套件已安裝，略過安裝步驟
+  echo  [OK] 套件已是最新，略過安裝步驟
 )
 
 REM ---------- 5. 啟動主程式 ----------
