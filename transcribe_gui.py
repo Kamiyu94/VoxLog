@@ -1416,7 +1416,7 @@ class TranscribeApp:
         ctx_wrap.pack(fill="x", anchor="w", pady=(12, 0))
         ctk.CTkLabel(
             ctx_wrap,
-            text="補充說明（校正/摘要會參考；例：廠商「鴻海」、產品「智慧音箱」、人名「王小明」）",
+            text="描述這段錄音的情境，幫助 AI 校正名稱、辨識角色；例如：鴻海的 ERP 專案會議，與會者有工程師 Joe、Rachel 與專案經理 Sam。",
             fg_color="transparent", text_color=SUBTEXT, font=F(FONT_UI, 13),
             justify="left", anchor="w",
         ).pack(fill="x", anchor="w", pady=(0, 4))
