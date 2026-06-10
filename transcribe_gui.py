@@ -1933,6 +1933,13 @@ def _enable_mac_clipboard(root):
             return "break"
         return handler
 
+    def _is_masked(w):
+        # 遮罩欄位（show="*"）= API key / token，使用者一定整段貼上。
+        try:
+            return bool(w.cget("show"))
+        except Exception:
+            return False
+
     def _paste(event):
         # macOS Tk 的 <<Paste>> 虛擬事件常因焦點時機失靈，
         # 改成直接讀剪貼簿、手動插入（適用 Entry 與 Text），失敗才退回虛擬事件。
@@ -1941,6 +1948,15 @@ def _enable_mac_clipboard(root):
             text = w.clipboard_get()
         except Exception:
             return "break"
+        # 遮罩欄位（key/token）：整個取代並去除前後空白/換行，
+        # 避免看不見的殘值累加成壞字串（這是同事 key 401 的真正根因）。
+        if _is_masked(w):
+            try:
+                w.delete(0, "end")
+                w.insert(0, text.strip())
+                return "break"
+            except Exception:
+                pass
         try:
             w.delete("sel.first", "sel.last")   # 有選取就先覆蓋
         except Exception:
@@ -1954,10 +1970,23 @@ def _enable_mac_clipboard(root):
                 pass
         return "break"
 
+    def _select_all(event):
+        # macOS 的 <<SelectAll>> 虛擬事件不可靠，改用手動全選。
+        w = event.widget
+        try:
+            w.select_range(0, "end")            # Entry / CTkEntry
+            w.icursor("end")
+        except Exception:
+            try:
+                w.tag_add("sel", "1.0", "end")  # Text
+            except Exception:
+                pass
+        return "break"
+
     root.bind_all("<Command-c>", _fire("<<Copy>>"))
     root.bind_all("<Command-v>", _paste)
     root.bind_all("<Command-x>", _fire("<<Cut>>"))
-    root.bind_all("<Command-a>", _fire("<<SelectAll>>"))
+    root.bind_all("<Command-a>", _select_all)
 
 
 if __name__ == "__main__":
