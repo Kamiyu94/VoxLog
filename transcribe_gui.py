@@ -8,6 +8,7 @@ import platform
 import threading
 import subprocess
 import multiprocessing
+from datetime import datetime
 import tkinter as tk
 from tkinter import filedialog, messagebox
 import customtkinter as ctk
@@ -83,9 +84,12 @@ NOTES_PROMPT = """你是專業的會議記錄整理者。以下是一份逐字�
 - 若逐字稿有 SPEAKER 或人名，適當標記是誰說的、誰負責什麼。
 - 只根據逐字稿內容，不要杜撰；資訊不足處寫「（逐字稿未明確說明）」。
 
-嚴格使用以下 Markdown 格式輸出（標題、清單、checkbox 都要照格式）：
+嚴格使用以下 Markdown 格式輸出（標題、清單、checkbox 都要照格式）。
+注意：**不要自己加最上層的 # 大標題**（標題會由系統用檔名填入）。
 
-# （為這場內容下一個精準、具體的標題）
+## 基本資訊
+- 會議時間：{meeting_time}
+- 參與者：（依逐字稿列出說話者或人名；無法判斷就寫「未明確」）
 
 ## 執行摘要
 （用一段 150–250 字，把整場的背景、核心重點、結論與目標濃縮成流暢的一段話。）
@@ -587,16 +591,46 @@ def _write_summary_docx(md_text, out_path):
     doc.save(out_path)
 
 
+def _clean_basename(path):
+    """去掉 _transcript / _transcript_corrected / 副檔名，還原成錄音檔名當標題。"""
+    base = os.path.basename(path)
+    for suf in ("_transcript_corrected.txt", "_transcript.txt", ".txt"):
+        if base.endswith(suf):
+            return base[:-len(suf)]
+    return os.path.splitext(base)[0]
+
+
+def _guess_meeting_time(path):
+    """推測會議時間：先試從檔名抓，抓不到就用檔案修改時間。"""
+    name = os.path.basename(path)
+    mtime = datetime.fromtimestamp(os.path.getmtime(path))
+    # 檔名含 "6月10日 14-56" / "6月10日 14:56"
+    m = re.search(r'(\d{1,2})月(\d{1,2})日\s*(\d{1,2})[-:](\d{2})', name)
+    if m:
+        mon, day, hh, mm = (int(x) for x in m.groups())
+        return f"{mtime.year}-{mon:02d}-{day:02d} {hh:02d}:{mm:02d}"
+    # 檔名含 "2026-06-10 14-56" / "2026-06-10_1456"
+    m = re.search(r'(\d{4})-(\d{1,2})-(\d{1,2})[ _]?(\d{2})[-:]?(\d{2})', name)
+    if m:
+        y, mo, d, hh, mm = (int(x) for x in m.groups())
+        return f"{y}-{mo:02d}-{d:02d} {hh:02d}:{mm:02d}"
+    # 抓不到 → 用檔案時間
+    return mtime.strftime("%Y-%m-%d %H:%M")
+
+
 def generate_summary(transcript_path, ai_engine, api_key, out_path=None, context=""):
     with open(transcript_path, "r", encoding="utf-8") as f:
         transcript = f.read()
     ctx = f"\n背景資訊：{context}" if context else ""
-    notes = _call_ai(NOTES_PROMPT.format(context=ctx, transcript=transcript), ai_engine, api_key)
+    title = _clean_basename(transcript_path)            # 標題＝錄音檔名
+    meeting_time = _guess_meeting_time(transcript_path)  # 會議時間（檔名或檔案時間）
+    notes = _call_ai(
+        NOTES_PROMPT.format(context=ctx, transcript=transcript, meeting_time=meeting_time),
+        ai_engine, api_key)
+    md = f"# {title}\n\n{notes}"                          # 標題由系統以檔名填入，不靠 AI 生
     if out_path is None:
-        out_path = transcript_path.replace("_transcript.txt", "_摘要.docx")
-        if out_path == transcript_path:
-            out_path = transcript_path.rsplit(".", 1)[0] + "_摘要.docx"
-    _write_summary_docx(notes, out_path)
+        out_path = os.path.join(os.path.dirname(transcript_path), f"{title}_摘要.docx")
+    _write_summary_docx(md, out_path)
     return out_path
 
 
@@ -620,6 +654,21 @@ class _StdoutCapture:
 
     def flush(self):
         pass
+
+
+def _collapse_repeats(text):
+    """壓掉 Whisper 幻覺式重複（對對對對…、我懂了 我懂了…），保留正常內容。"""
+    if not text:
+        return text
+    # 逗號/頓號分隔的重複：對,對,對,對
+    text = re.sub(r'([一-鿿！？。]{1,8})([,，、]\1){2,}', r'\1', text)
+    # 無分隔短字重複：對對對對 / 偏偏偏偏（連 4 次以上才壓，保留「謝謝」「哈哈哈」）
+    text = re.sub(r'([一-鿿]{1,4})\1{3,}', r'\1', text)
+    # 空白分隔短句重複：我懂了 我懂了 我懂了
+    text = re.sub(r'([一-鿿，。？！、]{2,10})( \1){2,}', r'\1', text)
+    # 完整句子重複（以標點結尾的長句）
+    text = re.sub(r'([一-鿿，。？！、 ]{8,30}[？。，！])\s*(\1\s*){1,}', r'\1', text)
+    return text
 
 
 def whisper_worker(audio, out_dir, model_name, lang, prompt, write_srt, result_q, log_q, prog_q):
@@ -661,7 +710,7 @@ def whisper_worker(audio, out_dir, model_name, lang, prompt, write_srt, result_q
                 start = int(seg["start"])
                 end = int(seg["end"])
                 ts = f"[{start//60:02d}:{start%60:02d} --> {end//60:02d}:{end%60:02d}]"
-                f.write(f"{ts} {seg['text'].strip()}\n")
+                f.write(f"{ts} {_collapse_repeats(seg['text'].strip())}\n")
 
         if write_srt:
             srt_path = os.path.join(out_dir, f"{base}.srt")
@@ -751,6 +800,7 @@ def whisperx_worker(audio, out_dir, model_name, lang, hf_token, num_speakers, pr
                     continue
                 if converter:
                     text = converter.convert(text)
+                text = _collapse_repeats(text)
                 ts = f"[{int(start)//60:02d}:{int(start)%60:02d} --> {int(end)//60:02d}:{int(end)%60:02d}]"
                 if speaker != current_speaker:
                     if current_speaker is not None:
@@ -2042,9 +2092,8 @@ class TranscribeApp:
         if not api_key and ai_engine not in ("ollama", "lmstudio"):
             self.log_write(f"請輸入 {_ENGINE_DISPLAY.get(ai_engine, ai_engine)} API Key")
             return
-        default_out = self.transcript_path.replace("_transcript.txt", "_摘要.docx")
-        if default_out == self.transcript_path:
-            default_out = self.transcript_path.rsplit(".", 1)[0] + "_摘要.docx"
+        base = _clean_basename(self.transcript_path)
+        default_out = os.path.join(os.path.dirname(self.transcript_path), f"{base}_摘要.docx")
         out_path = self._resolve_output_path(default_out)
         cfg_key = _ENGINE_CFG_KEY[ai_engine]
         save_config({cfg_key: api_key})
