@@ -1,6 +1,37 @@
-# VoxLog
+# VoxLog 🎙️
+
+> 一鍵把語音／影片變成逐字稿與 AI 會議摘要的桌面工具（macOS / Windows）。
+
+![License](https://img.shields.io/badge/License-MIT-green.svg)
+![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows-blue)
+![Python](https://img.shields.io/badge/python-3.11%20%7C%203.12-blue)
 
 VoxLog 是一個具備圖形化介面 (GUI) 的語音轉文字與 AI 輔助處理工具，能自動轉錄逐字稿、校正辨識錯誤、切割 SRT 字幕，以及利用 AI 自動產生會議紀錄與待辦事項。
+
+## ✨ 功能亮點
+
+- 🎙️ **語音／影片轉逐字稿** — 採用 OpenAI Whisper / WhisperX，可選模型大小（速度 vs. 準確度）
+- 🗣️ **說話人辨識（diarization）** — WhisperX + pyannote，標記「誰說了什麼」
+- 📺 **YouTube 直接下載轉錄** — 貼網址即可，支援帶 Cookies
+- 🤖 **AI 後製** — 校正辨識錯誤、產生結構化會議摘要（輸出 **Word .docx**）、切 SRT 字幕
+- 🧩 **多家 AI 引擎** — Claude / Gemini / ChatGPT，以及本機的 Ollama / LM Studio
+- 🖥️ **分頁式圖形介面** — 「① 轉錄 → ② 逐字稿處理」流程清楚，完成後自動開檔
+- ⌨️ **一鍵啟動** — Mac 打 `voxlog`、Windows 雙擊 `VoxLog.bat`
+
+## 📸 介面截圖
+
+> _截圖待補：將主介面截圖存成 `docs/screenshot.png`，下面這行取消註解即可顯示。_
+
+<!-- ![VoxLog 主介面](docs/screenshot.png) -->
+
+## 🚀 快速開始
+
+| 平台 | 圖文安裝指南（每段都有複製鈕） | 一鍵啟動 |
+|------|--------------------------------|----------|
+| 🍎 macOS | 用瀏覽器開 [`MACOS_SETUP.html`](MACOS_SETUP.html) | 之後打 `voxlog` |
+| 🪟 Windows | 用瀏覽器開 [`WINDOWS_SETUP.html`](WINDOWS_SETUP.html) | 雙擊 `VoxLog.bat` |
+
+> 想了解每個版本改了什麼，看 [CHANGELOG.md](CHANGELOG.md)。下面是純文字版的完整步驟。
 
 ## 系統需求
 - **FFmpeg**（用於處理音訊與影片格式轉換）
@@ -111,7 +142,8 @@ VoxLog 是一個具備圖形化介面 (GUI) 的語音轉文字與 AI 輔助處�
 > 所以**一定要同意 community-1 那一頁**，同意舊的 `speaker-diarization-3.1` 沒用。
 
 #### ⑤ 效能與其他
-- **Apple Silicon (M 系列)**：一般 Whisper 引擎支援 **MPS 加速**；WhisperX 目前在 Mac 只跑 CPU，功能正常但較慢。
+- **Apple Silicon (M 系列)**：Whisper／WhisperX 在 Mac 目前都跑 **CPU**。Apple 的 MPS 後端缺少 Whisper 轉錄需要的稀疏運算（`aten::_sparse_coo_tensor_with_dims_and_tensors`），用 MPS 會直接崩潰，因此程式會自動改用 CPU。功能完全正常，只是比 NVIDIA(CUDA) 慢。
+- **記憶體有限（如 8GB）**：請用較小的轉錄模型（預設已是 `small`，約 2GB），並優先用 Whisper 而非 WhisperX（後者另外載入對齊與語者分離模型，更吃記憶體）。GUI 的「轉錄模型」旁有 ⓘ 說明可參考。
 - **⚠️ 升級後可能復發**：②、③ 是對 Homebrew 套件的手動修補，若日後執行 `brew upgrade`／重裝 `python@3.11` 或更新 `torchcodec`，可能需要**重做一次**對應步驟（路徑版本號記得更新）。
 
 ---
@@ -145,5 +177,17 @@ VoxLog 是一個具備圖形化介面 (GUI) 的語音轉文字與 AI 輔助處�
    python transcribe_gui.py
    ```
 
+## 之後怎麼啟動 / 更新
+
+- **啟動**：裝好後，Mac 在終端機打 `voxlog`、Windows 雙擊 `VoxLog.bat` 即可，不必每次重打那串指令。
+- **更新到最新版**：`git pull`（或重新下載 ZIP 覆蓋）後，重跑一次 `pip install -r requirements.txt` 補裝可能新增的套件，再啟動即可。詳見兩份安裝指南的「🔄 之後怎麼更新到最新版」。
+
 ## 其他文件
-詳細的功能操作介紹與更進階的設定，請用瀏覽器開啟專案內的 `setup-guide.html` 查看完整操作手冊。
+- [`CHANGELOG.md`](CHANGELOG.md) — 每個版本改了什麼
+- [`MACOS_SETUP.html`](MACOS_SETUP.html) / [`WINDOWS_SETUP.html`](WINDOWS_SETUP.html) — 圖文安裝指南
+- [`MACOS_SETUP.md`](MACOS_SETUP.md) — macOS 安裝踩雷的底層技術紀錄
+- `setup-guide.html` — 完整功能操作手冊
+
+## 授權
+
+本專案採用 [MIT License](LICENSE) 授權，歡迎自由使用、修改與散布。

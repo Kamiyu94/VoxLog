@@ -56,3 +56,6 @@
   `pip install -r requirements.txt`」提醒，並把 401 的手動排除標註為「舊版才需要」；
   `WINDOWS_SETUP.html` 新增完整的「更新章節」與 `voxlog` 指令說明。
   commit `9ba5067`、`11ad244`
+
+- **開源發佈準備** — 加入 `LICENSE`（MIT，歡迎自由使用／修改／散布）；README 改寫成對外版
+  （功能亮點、截圖位置、快速開始表、連到 CHANGELOG／LICENSE），並修正過時的 MPS 敘述。
