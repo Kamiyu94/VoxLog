@@ -88,7 +88,7 @@ VoxLog 是一個具備圖形化介面 (GUI) 的語音轉文字與 AI 輔助處�
 
 ### 🍎 macOS 注意事項 / 疑難排解
 
-圖文版完整指南見 [`MACOS_SETUP.html`](MACOS_SETUP.html)；更底層的安裝踩雷技術紀錄在 [`MACOS_SETUP.md`](MACOS_SETUP.md)。這裡是重點摘要。
+圖文版完整指南見 [`MACOS_SETUP.html`](MACOS_SETUP.html)。這裡是重點摘要。
 
 #### 為什麼 Mac 安裝比較麻煩？
 本專案原本是 **Windows + NVIDIA(CUDA)** 環境開發的，移植到 Mac 會同時撞上三件事：
@@ -185,7 +185,6 @@ VoxLog 是一個具備圖形化介面 (GUI) 的語音轉文字與 AI 輔助處�
 ## 其他文件
 - [`CHANGELOG.md`](CHANGELOG.md) — 每個版本改了什麼
 - [`MACOS_SETUP.html`](MACOS_SETUP.html) / [`WINDOWS_SETUP.html`](WINDOWS_SETUP.html) — 圖文安裝指南
-- [`MACOS_SETUP.md`](MACOS_SETUP.md) — macOS 安裝踩雷的底層技術紀錄
 - `setup-guide.html` — 完整功能操作手冊
 
 ## 授權
