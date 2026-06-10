@@ -939,8 +939,8 @@ class _Tooltip:
         outer = tk.Frame(self.tip, bg=BORDER)
         outer.pack()
         tk.Label(outer, text=self.text, justify="left",
-                 bg=SURFACE, fg=TEXT, font=(FONT_UI, 12),
-                 padx=12, pady=10).pack(padx=1, pady=1)
+                 bg=SURFACE, fg=TEXT, font=(FONT_UI, 15),
+                 padx=14, pady=12).pack(padx=1, pady=1)
 
     def _hide(self, _=None):
         if self.tip:
