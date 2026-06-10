@@ -8,6 +8,7 @@ yt-dlp
 anthropic
 google-genai
 openai
+python-docx
 pyannote.audio
 torch
 torchvision

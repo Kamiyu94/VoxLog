@@ -6,6 +6,7 @@ import time
 import math
 import platform
 import threading
+import subprocess
 import multiprocessing
 import tkinter as tk
 from tkinter import filedialog, messagebox
@@ -473,17 +474,91 @@ def correct_transcript(transcript_path, ai_engine, api_key, out_path=None, conte
     return out_path
 
 
+def _open_file(path):
+    """用系統預設程式開啟檔案（Mac / Windows / Linux 通用）。失敗不影響主流程。"""
+    try:
+        if sys.platform == "darwin":
+            subprocess.run(["open", path], check=False)
+        elif os.name == "nt":
+            os.startfile(path)  # type: ignore[attr-defined]
+        else:
+            subprocess.run(["xdg-open", path], check=False)
+    except Exception:
+        pass
+
+
+def _write_summary_docx(md_text, out_path):
+    """把 AI 產出的 Markdown 摘要轉成 .docx（處理標題、清單、表格、**粗體**）。"""
+    from docx import Document
+
+    def add_runs(paragraph, text):
+        # 行內 **粗體**：split 後奇數段就是粗體內容
+        for idx, part in enumerate(re.split(r"\*\*(.+?)\*\*", text)):
+            if not part:
+                continue
+            run = paragraph.add_run(part)
+            if idx % 2 == 1:
+                run.bold = True
+
+    doc = Document()
+    lines = md_text.splitlines()
+    i, n = 0, len(lines)
+    while i < n:
+        stripped = lines[i].strip()
+        if not stripped:
+            i += 1
+            continue
+        # 表格：連續的 | ... | 行
+        if stripped.startswith("|") and stripped.endswith("|"):
+            rows = []
+            while i < n and lines[i].strip().startswith("|"):
+                cells = [c.strip() for c in lines[i].strip().strip("|").split("|")]
+                # 跳過分隔列 |---|---|
+                if not all(c and set(c) <= set("-: ") for c in cells):
+                    rows.append(cells)
+                i += 1
+            if rows:
+                ncol = max(len(r) for r in rows)
+                table = doc.add_table(rows=0, cols=ncol)
+                table.style = "Table Grid"
+                for r in rows:
+                    tcells = table.add_row().cells
+                    for j in range(ncol):
+                        tcells[j].text = r[j] if j < len(r) else ""
+            continue
+        # 標題（必須是 # 後接空白；# 人名 標籤無空白，不會誤判）
+        hm = re.match(r"^(#{1,6})\s+(.*)", stripped)
+        if hm:
+            doc.add_heading(hm.group(2).strip(), level=min(len(hm.group(1)), 4))
+            i += 1
+            continue
+        # 項目清單
+        if stripped.startswith(("- ", "* ")):
+            add_runs(doc.add_paragraph(style="List Bullet"), stripped[2:].strip())
+            i += 1
+            continue
+        nm = re.match(r"^(\d+)\.\s+(.*)", stripped)
+        if nm:
+            add_runs(doc.add_paragraph(style="List Number"), nm.group(2).strip())
+            i += 1
+            continue
+        # 一般段落
+        add_runs(doc.add_paragraph(), stripped)
+        i += 1
+
+    doc.save(out_path)
+
+
 def generate_summary(transcript_path, ai_engine, api_key, out_path=None, context=""):
     with open(transcript_path, "r", encoding="utf-8") as f:
         transcript = f.read()
     ctx = f"\n背景資訊：{context}" if context else ""
     notes = _call_ai(NOTES_PROMPT.format(context=ctx, transcript=transcript), ai_engine, api_key)
     if out_path is None:
-        out_path = transcript_path.replace("_transcript.txt", "_摘要.md")
+        out_path = transcript_path.replace("_transcript.txt", "_摘要.docx")
         if out_path == transcript_path:
-            out_path = transcript_path.rsplit(".", 1)[0] + "_摘要.md"
-    with open(out_path, "w", encoding="utf-8") as f:
-        f.write(notes)
+            out_path = transcript_path.rsplit(".", 1)[0] + "_摘要.docx"
+    _write_summary_docx(notes, out_path)
     return out_path
 
 
@@ -1589,6 +1664,7 @@ class TranscribeApp:
                         self._rename_speakers(data, dlg.result)
                 self.transcript_path = data
                 self.loaded_file_var.set(f"已載入：{os.path.basename(data)}")
+                _open_file(data)
                 self.correct_btn.configure(state="normal", fg_color=BLUE, text_color="white")
                 self.notes_btn.configure(state="normal", fg_color=BLUE, text_color="white")
                 self.export_srt_btn.configure(state="normal", fg_color=BLUE, text_color="white")
@@ -1782,7 +1858,8 @@ class TranscribeApp:
         self.transcript_path = out_path
         self.loaded_file_var.set(f"已載入：{os.path.basename(out_path)}")
         self.log_write(f"校正完成：{os.path.basename(out_path)}")
-        self._set_status("校正完成！可繼續點選「產生摘要」", GREEN)
+        self._set_status("校正完成！已自動開啟，可繼續點選「產生摘要」", GREEN)
+        _open_file(out_path)
 
     def _correct_error(self, err):
         self._stop_ai_progress(success=False)
@@ -1798,9 +1875,9 @@ class TranscribeApp:
         if not api_key and ai_engine not in ("ollama", "lmstudio"):
             self.log_write(f"請輸入 {_ENGINE_DISPLAY.get(ai_engine, ai_engine)} API Key")
             return
-        default_out = self.transcript_path.replace("_transcript.txt", "_摘要.md")
+        default_out = self.transcript_path.replace("_transcript.txt", "_摘要.docx")
         if default_out == self.transcript_path:
-            default_out = self.transcript_path.rsplit(".", 1)[0] + "_摘要.md"
+            default_out = self.transcript_path.rsplit(".", 1)[0] + "_摘要.docx"
         out_path = self._resolve_output_path(default_out)
         cfg_key = _ENGINE_CFG_KEY[ai_engine]
         save_config({cfg_key: api_key})
@@ -1903,7 +1980,8 @@ class TranscribeApp:
             self._set_status("已取消", SUBTEXT)
             return
         self.log_write(f"摘要已儲存：{os.path.basename(out_path)}")
-        self._set_status("摘要完成！", GREEN)
+        self._set_status("摘要完成！已自動開啟", GREEN)
+        _open_file(out_path)
 
     def _notes_error(self, err):
         self._stop_ai_progress(success=False)
