@@ -1411,6 +1411,22 @@ class TranscribeApp:
         self.ai_model_var.trace_add("write", self._on_model_change)
         self._sync_model_widget(self.ai_engine_var.get())
 
+        # 補充說明（看完逐字稿後，把聽錯的廠商/產品/人名等補進來，校正與摘要會參考）
+        ctx_wrap = ctk.CTkFrame(tab_ai, fg_color="transparent")
+        ctx_wrap.pack(fill="x", anchor="w", pady=(12, 0))
+        ctk.CTkLabel(
+            ctx_wrap,
+            text="補充說明（校正/摘要會參考；例：廠商「鴻海」、產品「iFriend」、人名「子淵」）",
+            fg_color="transparent", text_color=SUBTEXT, font=F(FONT_UI, 13),
+            justify="left", anchor="w",
+        ).pack(fill="x", anchor="w", pady=(0, 4))
+        self.ai_context_box = ctk.CTkTextbox(
+            ctx_wrap, height=56, fg_color=SURFACE, text_color=TEXT,
+            border_color=BORDER, border_width=1, font=F(FONT_UI, 13),
+            wrap="word",
+        )
+        self.ai_context_box.pack(fill="x")
+
         # 後製按鈕
         post_outer = ctk.CTkFrame(tab_ai, fg_color="transparent")
         post_outer.pack(pady=(10, 4))
@@ -2033,6 +2049,20 @@ class TranscribeApp:
             f.write(content)
 
     # ── AI operations ──────────────────────────────
+    def _ai_context(self):
+        """AI 校正/摘要用的情境：合併第一頁的轉錄情境（濾掉預設值）與第二頁的補充說明。"""
+        parts = []
+        t1 = self.prompt_var.get().strip()
+        if t1 and t1 != "以下是繁體中文對話。":   # 預設的轉錄提示對 AI 沒意義，略過
+            parts.append(t1)
+        try:
+            t2 = self.ai_context_box.get("1.0", "end").strip()
+        except Exception:
+            t2 = ""
+        if t2:
+            parts.append(t2)
+        return "　".join(parts)
+
     def correct_transcript(self):
         if not self.transcript_path:
             return
@@ -2057,7 +2087,7 @@ class TranscribeApp:
 
         def run():
             try:
-                result = correct_transcript(self.transcript_path, ai_engine, api_key, out_path, context=self.prompt_var.get().strip())
+                result = correct_transcript(self.transcript_path, ai_engine, api_key, out_path, context=self._ai_context())
                 self.root.after(0, lambda: self._correct_done(result))
             except Exception as e:
                 err = str(e)
@@ -2109,7 +2139,7 @@ class TranscribeApp:
 
         def run():
             try:
-                result = generate_summary(self.transcript_path, ai_engine, api_key, out_path, context=self.prompt_var.get().strip())
+                result = generate_summary(self.transcript_path, ai_engine, api_key, out_path, context=self._ai_context())
                 self.root.after(0, lambda: self._notes_done(result))
             except Exception as e:
                 err = str(e)
