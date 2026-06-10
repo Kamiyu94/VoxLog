@@ -929,7 +929,7 @@ class TranscribeApp:
 
         ctk.CTkLabel(settings, text="模型", fg_color="transparent", text_color=SUBTEXT,
                      font=F(FONT_UI, 12)).pack(side="left", padx=(14, 4))
-        self.model_var = tk.StringVar(value="medium")
+        self.model_var = tk.StringVar(value="small")
         ctk.CTkComboBox(settings, variable=self.model_var,
                         values=["tiny", "base", "small", "medium", "large"],
                         width=100, state="readonly",
