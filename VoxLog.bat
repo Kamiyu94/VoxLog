@@ -80,7 +80,19 @@ if defined NEED_INSTALL (
   echo  [OK] 套件已是最新，略過安裝步驟
 )
 
-REM ---------- 5. 啟動主程式 ----------
+REM ---------- 5. 註冊 voxlog 快速指令（之後任何終端機打 voxlog 就能啟動） ----------
+REM WindowsApps 預設就在使用者 PATH 上，丟一個 voxlog.cmd 進去即可，免改 PATH。
+set "SHIM_DIR=%LOCALAPPDATA%\Microsoft\WindowsApps"
+set "SHIM=%SHIM_DIR%\voxlog.cmd"
+set "SHIM_NEW="
+if not exist "%SHIM%" set "SHIM_NEW=1"
+if exist "%SHIM_DIR%\" (
+  > "%SHIM%" echo @echo off
+  >> "%SHIM%" echo call "%~dp0VoxLog.bat" %%*
+  if defined SHIM_NEW echo  [OK] 已註冊 voxlog 指令：之後在「命令提示字元」或 PowerShell 打 voxlog 就能啟動
+)
+
+REM ---------- 6. 啟動主程式 ----------
 echo.
 echo  [*] 啟動 VoxLog...
 echo.
