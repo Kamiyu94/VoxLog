@@ -213,7 +213,7 @@ def _words_to_srt_segments(words, max_chars=20):
 def _call_ai(prompt, ai_engine, api_key):
     if ai_engine == "claude":
         import anthropic
-        model = load_config().get("claude_model", "claude-sonnet-4-6")
+        model = _model_id(load_config().get("claude_model", "claude-sonnet-4-6"))
         client = anthropic.Anthropic(api_key=api_key)
         msg = client.messages.create(
             model=model,
@@ -243,7 +243,7 @@ def _call_ai(prompt, ai_engine, api_key):
         return resp.json()["choices"][0]["message"]["content"]
     elif ai_engine == "openai":
         from openai import OpenAI
-        model = load_config().get("openai_model", "gpt-4o")
+        model = _model_id(load_config().get("openai_model", "gpt-4o"))
         client = OpenAI(api_key=api_key)
         resp = client.chat.completions.create(
             model=model,
@@ -252,7 +252,7 @@ def _call_ai(prompt, ai_engine, api_key):
         return resp.choices[0].message.content
     else:
         from google import genai
-        model = load_config().get("gemini_model", "gemini-3.1-flash-lite")
+        model = _model_id(load_config().get("gemini_model", "gemini-3.1-flash-lite"))
         client = genai.Client(api_key=api_key)
         response = client.models.generate_content(
             model=model,
@@ -283,9 +283,21 @@ _ENGINE_DISPLAY = {
 # 直接打在 Key 欄位，不走這份清單。
 _ENGINE_MODELS = {
     "claude": ["claude-opus-4-8", "claude-sonnet-4-6", "claude-haiku-4-5-20251001"],
-    "gemini": ["gemini-3.1-pro-preview", "gemini-2.5-pro", "gemini-3.1-flash-lite", "gemini-2.5-flash"],
+    "gemini": [
+        "gemini-3.1-pro-preview  ·  付費（品質最佳）",
+        "gemini-2.5-pro  ·  付費",
+        "gemini-3.5-flash  ·  免費",
+        "gemini-2.5-flash  ·  免費",
+        "gemini-3.1-flash-lite  ·  免費（最省）",
+    ],
     "openai": ["gpt-4o", "gpt-4o-mini", "gpt-4.1"],
 }
+
+
+def _model_id(label):
+    """從下拉顯示字串取回實際模型 ID（去掉「  ·  免費/付費」等標註）。
+    使用者手動輸入純 ID 時不含分隔符，會原樣回傳。"""
+    return (label or "").split("  ·  ")[0].strip()
 # 各引擎的模型名稱在 config.json 對應的欄位（與 _call_ai 讀取的一致）
 _ENGINE_MODEL_KEY = {
     "claude": "claude_model",
@@ -1643,9 +1655,13 @@ class TranscribeApp:
         if not hasattr(self, "ai_model_combo"):
             return
         if engine in _ENGINE_MODELS:
-            self.ai_model_combo.configure(values=_ENGINE_MODELS[engine])
+            labels = _ENGINE_MODELS[engine]
+            self.ai_model_combo.configure(values=labels)
             cfg_key = _ENGINE_MODEL_KEY[engine]
-            self.ai_model_var.set(self.cfg.get(cfg_key, _ENGINE_MODEL_DEFAULT[engine]))
+            saved = self.cfg.get(cfg_key, _ENGINE_MODEL_DEFAULT[engine])
+            # 存的是純模型 ID，顯示時換回含「免費/付費」標註的對應標籤
+            display = next((lb for lb in labels if _model_id(lb) == saved), saved)
+            self.ai_model_var.set(display)
             if not self.ai_model_row.winfo_ismapped():
                 self.ai_model_row.pack(fill="x", anchor="w", pady=(6, 0),
                                        before=self.ai_key_row)
@@ -1659,7 +1675,7 @@ class TranscribeApp:
         engine = self.ai_engine_var.get()
         if engine not in _ENGINE_MODEL_KEY:
             return
-        model = self.ai_model_var.get().strip()
+        model = _model_id(self.ai_model_var.get())  # 去掉「免費/付費」標註，只存純 ID
         if not model:
             return
         cfg_key = _ENGINE_MODEL_KEY[engine]
@@ -2252,9 +2268,56 @@ class TranscribeApp:
         self.export_srt_btn.configure(state="normal", fg_color=BLUE, text_color="white")
 
 
+def _is_masked_widget(w):
+    """遮罩欄位（show="*"）= API key / token，使用者一定整段貼上。"""
+    try:
+        return bool(w.cget("show"))
+    except Exception:
+        return False
+
+
+def _widget_paste(w):
+    """手動貼上：遮罩欄位整段取代＋去空白，其餘插入游標處。回傳 'break'。"""
+    try:
+        text = w.clipboard_get()
+    except Exception:
+        return "break"
+    if _is_masked_widget(w):
+        try:
+            w.delete(0, "end")
+            w.insert(0, text.strip())
+            return "break"
+        except Exception:
+            pass
+    try:
+        w.delete("sel.first", "sel.last")   # 有選取就先覆蓋
+    except Exception:
+        pass
+    try:
+        w.insert("insert", text)
+    except Exception:
+        try:
+            w.event_generate("<<Paste>>")
+        except Exception:
+            pass
+    return "break"
+
+
+def _widget_select_all(w):
+    try:
+        w.select_range(0, "end")            # Entry / CTkEntry
+        w.icursor("end")
+    except Exception:
+        try:
+            w.tag_add("sel", "1.0", "end")  # Text
+        except Exception:
+            pass
+    return "break"
+
+
 def _enable_mac_clipboard(root):
-    """macOS：tkinter 預設的 Cmd+C / Cmd+V / Cmd+X / Cmd+A 常失效，
-    這裡手動把它們綁定到目前聚焦的輸入框。"""
+    """macOS：tkinter 的 Cmd+C/V/X/A 在不同焦點時機常失靈（平台老問題）。
+    這裡用兩道保險：① 攔截 Cmd 鍵手動處理；② 右鍵選單作為 100% 可靠的後備。"""
     if sys.platform != "darwin":
         return
 
@@ -2267,60 +2330,35 @@ def _enable_mac_clipboard(root):
             return "break"
         return handler
 
-    def _is_masked(w):
-        # 遮罩欄位（show="*"）= API key / token，使用者一定整段貼上。
-        try:
-            return bool(w.cget("show"))
-        except Exception:
-            return False
+    root.bind_all("<Command-c>", _fire("<<Copy>>"))
+    root.bind_all("<Command-v>", lambda e: _widget_paste(e.widget))
+    root.bind_all("<Command-x>", _fire("<<Cut>>"))
+    root.bind_all("<Command-a>", lambda e: _widget_select_all(e.widget))
 
-    def _paste(event):
-        # macOS Tk 的 <<Paste>> 虛擬事件常因焦點時機失靈，
-        # 改成直接讀剪貼簿、手動插入（適用 Entry 與 Text），失敗才退回虛擬事件。
+    # 右鍵選單：不依賴快捷鍵，永遠可用
+    def _popup(event):
         w = event.widget
         try:
-            text = w.clipboard_get()
-        except Exception:
-            return "break"
-        # 遮罩欄位（key/token）：整個取代並去除前後空白/換行，
-        # 避免看不見的殘值累加成壞字串（這是同事 key 401 的真正根因）。
-        if _is_masked(w):
-            try:
-                w.delete(0, "end")
-                w.insert(0, text.strip())
-                return "break"
-            except Exception:
-                pass
-        try:
-            w.delete("sel.first", "sel.last")   # 有選取就先覆蓋
+            w.focus_set()
         except Exception:
             pass
+        menu = tk.Menu(w, tearoff=0)
+        menu.add_command(label="剪下", command=lambda: w.event_generate("<<Cut>>"))
+        menu.add_command(label="複製", command=lambda: w.event_generate("<<Copy>>"))
+        menu.add_command(label="貼上", command=lambda: _widget_paste(w))
+        menu.add_separator()
+        menu.add_command(label="全選", command=lambda: _widget_select_all(w))
         try:
-            w.insert("insert", text)
-        except Exception:
-            try:
-                w.event_generate("<<Paste>>")
-            except Exception:
-                pass
+            menu.tk_popup(event.x_root, event.y_root)
+        finally:
+            menu.grab_release()
         return "break"
 
-    def _select_all(event):
-        # macOS 的 <<SelectAll>> 虛擬事件不可靠，改用手動全選。
-        w = event.widget
-        try:
-            w.select_range(0, "end")            # Entry / CTkEntry
-            w.icursor("end")
-        except Exception:
-            try:
-                w.tag_add("sel", "1.0", "end")  # Text
-            except Exception:
-                pass
-        return "break"
-
-    root.bind_all("<Command-c>", _fire("<<Copy>>"))
-    root.bind_all("<Command-v>", _paste)
-    root.bind_all("<Command-x>", _fire("<<Cut>>"))
-    root.bind_all("<Command-a>", _select_all)
+    # 綁在 Entry / Text class 上，連之後新建的欄位、對話框都涵蓋
+    for cls in ("Entry", "Text"):
+        root.bind_class(cls, "<Button-2>", _popup, add="+")          # 部分滑鼠的右鍵
+        root.bind_class(cls, "<Button-3>", _popup, add="+")          # 多數滑鼠的右鍵
+        root.bind_class(cls, "<Control-Button-1>", _popup, add="+")  # Ctrl+左鍵 = 右鍵
 
 
 if __name__ == "__main__":
