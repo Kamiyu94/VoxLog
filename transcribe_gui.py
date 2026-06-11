@@ -283,7 +283,7 @@ _ENGINE_DISPLAY = {
 # 直接打在 Key 欄位，不走這份清單。
 _ENGINE_MODELS = {
     "claude": ["claude-opus-4-8", "claude-sonnet-4-6", "claude-haiku-4-5-20251001"],
-    "gemini": ["gemini-3.1-flash-lite", "gemini-3.1-pro", "gemini-2.5-flash"],
+    "gemini": ["gemini-3.1-pro-preview", "gemini-2.5-pro", "gemini-3.1-flash-lite", "gemini-2.5-flash"],
     "openai": ["gpt-4o", "gpt-4o-mini", "gpt-4.1"],
 }
 # 各引擎的模型名稱在 config.json 對應的欄位（與 _call_ai 讀取的一致）
