@@ -29,6 +29,15 @@ media/
 # Config
 config.json
 
+# Private reference material（真實會議逐字稿／摘要等機密，勿上傳）
+reference/
+
+# Generated transcripts / summaries
+*_transcript.txt
+*_transcript_corrected*.txt
+*_摘要.docx
+*.srt
+
 # OS generated files
 .DS_Store
 Thumbs.db
