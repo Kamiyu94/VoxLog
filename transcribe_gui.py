@@ -1090,8 +1090,8 @@ class TranscribeApp:
     def __init__(self, root):
         self.root = root
         self.root.title("VoxLog")
-        self.root.geometry("780x810")
-        self.root.minsize(700, 670)
+        self.root.geometry("880x810")
+        self.root.minsize(800, 670)
         self.root.configure(fg_color=BG)
 
         self.root.grid_columnconfigure(0, weight=1)
@@ -1409,7 +1409,7 @@ class TranscribeApp:
             value=self.cfg.get("gemini_model", _ENGINE_MODEL_DEFAULT["gemini"]))
         self.ai_model_combo = ctk.CTkComboBox(
             self.ai_model_row, variable=self.ai_model_var, values=_ENGINE_MODELS["gemini"],
-            width=260,
+            width=380,
             fg_color=SURFACE, text_color=TEXT, border_color=BORDER, border_width=1,
             button_color=BORDER, button_hover_color=ACCENT,
             dropdown_fg_color=SURFACE, dropdown_text_color=TEXT, dropdown_hover_color=BORDER,
