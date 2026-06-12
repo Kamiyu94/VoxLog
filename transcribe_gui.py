@@ -303,7 +303,6 @@ _ENGINE_MODELS = {
     "openai": ["gpt-4o", "gpt-4o-mini", "gpt-4.1"],
 }
 
-
 def _model_id(label):
     """從下拉顯示字串取回實際模型 ID（去掉「  ·  免費/付費」等標註）。
     使用者手動輸入純 ID 時不含分隔符，會原樣回傳。"""
@@ -320,6 +319,63 @@ _ENGINE_MODEL_DEFAULT = {
     "gemini": "gemini-3.1-flash-lite",
     "openai": "gpt-4o",
 }
+
+# ── 第一步驟「辨識引擎」清單（皆地端）─────────────────────────────────
+# 顯示標籤 ←→ 內部值。語音辨識一律走地端（隱私、免費、且 WhisperX 能用聲紋
+# 穩定分辨說話者）；雲端 AI 只在第二步驟做校正/摘要。
+STT_ENGINES = [
+    ("whisper",      "地端 Whisper"),
+    ("whisperx",     "地端 WhisperX（含說話人辨識）"),
+]
+_STT_LABEL2VAL = {lb: v for v, lb in STT_ENGINES}
+_STT_VAL2LABEL = {v: lb for v, lb in STT_ENGINES}
+
+# Whisper 的 initial_prompt 約有 224 token 上限，超過會被截斷而失效；中文粗估
+# 1 字 ≈ 1 token，這裡保守抓 180 字當整段預算，扣掉固定前綴後剩給「術語」的額度。
+INITIAL_PROMPT_BUDGET = 180
+_IP_BASE = "以下是繁體中文對話。"
+_IP_LEAD = "可能提到："
+_TERMS_BUDGET = INITIAL_PROMPT_BUDGET - len(_IP_BASE) - len(_IP_LEAD)
+
+
+def _build_initial_prompt(terms):
+    """把使用者輸入的關鍵術語組成 Whisper 的 initial_prompt，並裁在 token 預算內。
+    超出的術語不會送進地端辨識（會走無限制的雲端/校正/摘要），避免整段被截掉而失效。"""
+    terms = (terms or "").strip()
+    if not terms:
+        return _IP_BASE
+    return (_IP_BASE + _IP_LEAD + terms)[:INITIAL_PROMPT_BUDGET]
+
+
+def _total_ram_gb():
+    """回傳系統實體記憶體（GB）；取不到回 None。"""
+    try:
+        import psutil
+        return psutil.virtual_memory().total / (1024 ** 3)
+    except Exception:
+        pass
+    try:
+        if sys.platform == "darwin":
+            out = subprocess.check_output(["sysctl", "-n", "hw.memsize"])
+            return int(out.strip()) / (1024 ** 3)
+    except Exception:
+        pass
+    try:
+        return os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES") / (1024 ** 3)
+    except Exception:
+        return None
+
+
+def _suggest_model():
+    """依記憶體建議地端預設模型：<10GB→small（如 8GB MBA），<24GB→medium，否則 large-v3。"""
+    gb = _total_ram_gb()
+    if gb is None:
+        return "small"
+    if gb < 10:
+        return "small"
+    if gb < 24:
+        return "medium"
+    return "large-v3"
 
 
 def verify_engine(ai_engine, api_key):
@@ -788,6 +844,8 @@ def whisperx_worker(audio, out_dir, model_name, lang, hf_token, num_speakers, pr
         duration = len(audio_data) / 16000
         m, s = int(duration // 60), int(duration % 60)
         log_q.put(f"開始轉錄：{os.path.basename(audio)}（{m} 分 {s} 秒）")
+        if duration > 3600:  # 地端講者分離（pyannote）吃整檔記憶體，長檔易 OOM
+            log_q.put("⚠ 超過 1 小時的長檔：說話人辨識較吃記憶體；若記憶體不足而中途失敗，可改小模型或分段處理。")
 
         transcribe_kwargs = {"batch_size": 8}
         if lang:
@@ -866,6 +924,8 @@ def whisperx_worker(audio, out_dir, model_name, lang, hf_token, num_speakers, pr
         result_q.put(("done", out_path))
     except Exception as e:
         result_q.put(("error", str(e)))
+
+
 
 
 def _make_icon():
@@ -1040,6 +1100,73 @@ class SpeakerNameDialog(ctk.CTkToplevel):
         self.destroy()
 
 
+class YouTubeURLDialog(ctk.CTkToplevel):
+    """點 YouTube 按鈕後彈出，輸入網址（Cookies 收為進階選項）。result = (url, cookies_choice) 或 None。"""
+
+    COOKIE_VALUES = ["Cookies: 無", "Cookies: Chrome", "Cookies: Edge", "Cookies: Firefox",
+                     "Cookies: Brave", "Cookies: Opera", "Cookies: Safari",
+                     "Cookies: 檔案", "Cookies: 選擇檔案..."]
+
+    def __init__(self, parent, url_default="", cookies_default="Cookies: 無"):
+        super().__init__(parent)
+        self.title("從 YouTube 下載音訊")
+        self.resizable(False, False)
+        self.configure(fg_color=BG)
+        self.grab_set()
+        self.result = None
+
+        ctk.CTkLabel(self, text="貼上 YouTube 影片網址",
+                     fg_color="transparent", text_color=TEXT,
+                     font=ctk.CTkFont(FONT_UI, 15, weight="bold")).pack(anchor="w", padx=20, pady=(18, 6))
+        self.url_var = tk.StringVar(value=url_default)
+        entry = ctk.CTkEntry(self, textvariable=self.url_var, width=440, height=36,
+                             placeholder_text="https://www.youtube.com/watch?v=...",
+                             fg_color=SURFACE, text_color=TEXT,
+                             border_color=BORDER, border_width=1,
+                             font=ctk.CTkFont(FONT_UI, 13))
+        entry.pack(padx=20)
+
+        ctk.CTkLabel(self,
+                     text="一般公開影片免填 Cookies；遇到年齡限制／會員／私人影片才需要。",
+                     fg_color="transparent", text_color=SUBTEXT,
+                     font=ctk.CTkFont(FONT_UI, 12), justify="left",
+                     anchor="w").pack(anchor="w", padx=20, pady=(12, 2))
+        self.cookies_var = tk.StringVar(
+            value=cookies_default if cookies_default in self.COOKIE_VALUES else "Cookies: 無")
+        ctk.CTkComboBox(self, variable=self.cookies_var, values=self.COOKIE_VALUES,
+                        width=240, state="readonly",
+                        fg_color=SURFACE, text_color=TEXT, button_color=BORDER,
+                        button_hover_color=ACCENT, border_color=BORDER,
+                        dropdown_fg_color=SURFACE, dropdown_text_color=TEXT,
+                        dropdown_hover_color=BORDER,
+                        font=ctk.CTkFont(FONT_UI, 12)).pack(anchor="w", padx=20)
+
+        btn_frame = ctk.CTkFrame(self, fg_color="transparent")
+        btn_frame.pack(pady=(16, 18), padx=20, fill="x")
+        ctk.CTkButton(btn_frame, text="開始下載", command=self._ok,
+                      fg_color=GREEN, hover_color="#219A52",
+                      text_color="white", width=100).pack(side="right", padx=(8, 0))
+        ctk.CTkButton(btn_frame, text="取消", command=self._cancel,
+                      fg_color=SURFACE, hover_color=BORDER,
+                      text_color=TEXT, width=90).pack(side="right")
+
+        self.transient(parent)
+        entry.focus_set()
+        self.bind("<Return>", lambda *_: self._ok())
+        self.bind("<Escape>", lambda *_: self._cancel())
+        self.wait_window()
+
+    def _ok(self):
+        url = self.url_var.get().strip()
+        if not url:
+            return
+        self.result = (url, self.cookies_var.get())
+        self.destroy()
+
+    def _cancel(self):
+        self.destroy()
+
+
 MODEL_HELP_TEXT = (
     "模型越大越準，但越慢、越吃記憶體：\n"
     "• small（約 2GB）：快；安靜環境、標準國語就夠用\n"
@@ -1090,12 +1217,15 @@ class TranscribeApp:
     def __init__(self, root):
         self.root = root
         self.root.title("VoxLog")
-        self.root.geometry("880x810")
-        self.root.minsize(800, 670)
+        self.root.geometry("780x720")
+        self.root.minsize(720, 660)
         self.root.configure(fg_color=BG)
 
         self.root.grid_columnconfigure(0, weight=1)
-        self.root.grid_rowconfigure(0, weight=1)  # 分頁區撐開，log 維持固定小尺寸
+        # 分頁區「貼合內容」（weight 0 → 取自身需求高度，開始鈕永不被切）；
+        # 多出來的高度給 Log（row 5 weight 1），視窗拉高就是 Log 變清楚，不再留空隙。
+        self.root.grid_rowconfigure(0, weight=0)
+        self.root.grid_rowconfigure(5, weight=1)
 
         self.process = None
         self.result_q = None
@@ -1115,6 +1245,9 @@ class TranscribeApp:
         ensure_config()  # 首次啟動自動建立空白 config.json，小白不必手動建檔
         self.cfg = load_config()
         self.cookies_file_path = self.cfg.get("cookies_file_path", "")
+        # YouTube 下載相關（改用對話框輸入，故在此建立變數，不在版面上佔位）
+        self.yt_url_var = tk.StringVar()
+        self.cookies_browser_var = tk.StringVar(value=self.cfg.get("cookies_browser", "Cookies: 無"))
 
         self._set_icon()
         self._build_ui()
@@ -1208,32 +1341,34 @@ class TranscribeApp:
             tab_t, justify="left",
             text="① 選音檔或貼 YouTube 網址　② 設好輸出資料夾　③ 按「開始轉錄」",
             fg_color="transparent", text_color=TEXT, font=F(FONT_UI, 16),
-        ).pack(anchor="w", padx=4, pady=(14, 10))
+        ).pack(anchor="w", padx=4, pady=(6, 4))
 
-        # 設定（轉錄模型 / 語言 / 轉錄引擎）
+        # ── 辨識設定（引擎 / 語言 + 隨引擎變動的選項）──
         settings = ctk.CTkFrame(tab_t, fg_color=SURFACE, corner_radius=8)
         settings.pack(fill="x", pady=(0, 4), ipady=6)
 
-        ctk.CTkLabel(settings, text="轉錄模型", fg_color="transparent", text_color=SUBTEXT,
-                     font=F(FONT_UI, 14)).pack(side="left", padx=(14, 4))
-        self.model_var = tk.StringVar(value="small")
-        ctk.CTkComboBox(settings, variable=self.model_var,
-                        values=["tiny", "base", "small", "medium", "large"],
-                        width=104, state="readonly",
+        # 第一列：辨識引擎 + 語言
+        row_eng = ctk.CTkFrame(settings, fg_color="transparent")
+        row_eng.pack(fill="x", padx=14, pady=(6, 2))
+        ctk.CTkLabel(row_eng, text="辨識引擎", fg_color="transparent", text_color=SUBTEXT,
+                     font=F(FONT_UI, 14)).pack(side="left", padx=(0, 6))
+        self.engine_var = tk.StringVar(
+            value=_STT_VAL2LABEL.get(self.cfg.get("stt_engine", "whisper"),
+                                     _STT_VAL2LABEL["whisper"]))
+        ctk.CTkComboBox(row_eng, variable=self.engine_var,
+                        values=[lb for _, lb in STT_ENGINES],
+                        width=250, state="readonly",
+                        command=lambda *_: self._on_engine_change(),
                         fg_color=BG, text_color=TEXT, button_color=BORDER,
                         button_hover_color=ACCENT, border_color=BORDER,
                         dropdown_fg_color=SURFACE, dropdown_text_color=TEXT,
                         dropdown_hover_color=BORDER,
                         font=F(FONT_UI, 13)).pack(side="left")
-        model_info = ctk.CTkLabel(settings, text="ⓘ", fg_color="transparent",
-                                   text_color=ACCENT, font=F(FONT_UI, 15), cursor="hand2")
-        model_info.pack(side="left", padx=(4, 0))
-        _Tooltip(model_info, MODEL_HELP_TEXT)
 
-        ctk.CTkLabel(settings, text="語言", fg_color="transparent", text_color=SUBTEXT,
-                     font=F(FONT_UI, 14)).pack(side="left", padx=(16, 4))
+        ctk.CTkLabel(row_eng, text="語言", fg_color="transparent", text_color=SUBTEXT,
+                     font=F(FONT_UI, 14)).pack(side="left", padx=(18, 4))
         self.lang_var = tk.StringVar(value="中文")
-        ctk.CTkComboBox(settings, variable=self.lang_var,
+        ctk.CTkComboBox(row_eng, variable=self.lang_var,
                         values=list(LANG_MAP.keys()),
                         width=110, state="readonly",
                         fg_color=BG, text_color=TEXT, button_color=BORDER,
@@ -1242,108 +1377,92 @@ class TranscribeApp:
                         dropdown_hover_color=BORDER,
                         font=F(FONT_UI, 13)).pack(side="left")
 
-        ctk.CTkLabel(settings, text="轉錄引擎", fg_color="transparent", text_color=SUBTEXT,
-                     font=F(FONT_UI, 14)).pack(side="left", padx=(18, 6))
-        self.engine_var = tk.StringVar(value="whisper")
-        for val, label in [("whisper", "Whisper"), ("whisperx", "WhisperX（說話人辨識）")]:
-            ctk.CTkRadioButton(
-                settings, text=label, variable=self.engine_var,
-                value=val, command=self._on_engine_change,
-                text_color=TEXT, fg_color=ACCENT, hover_color=ACCENT,
-                font=F(FONT_UI, 14),
-            ).pack(side="left", padx=(0, 10))
+        # 第二列：隨引擎變動的選項（地端模型 / WhisperX 額外的 HF Token + 說話人數）
+        self.stt_opt_row = ctk.CTkFrame(settings, fg_color="transparent")
+        self.stt_opt_row.pack(fill="x", padx=14, pady=(2, 4))
+
+        # ▸ 地端：轉錄模型
+        self.f_model = ctk.CTkFrame(self.stt_opt_row, fg_color="transparent")
+        ctk.CTkLabel(self.f_model, text="轉錄模型", fg_color="transparent", text_color=SUBTEXT,
+                     font=F(FONT_UI, 14)).pack(side="left", padx=(0, 4))
+        self.model_var = tk.StringVar(value=self.cfg.get("stt_model") or _suggest_model())
+        ctk.CTkComboBox(self.f_model, variable=self.model_var,
+                        values=["tiny", "base", "small", "medium", "large", "large-v3"],
+                        width=120, state="readonly",
+                        fg_color=BG, text_color=TEXT, button_color=BORDER,
+                        button_hover_color=ACCENT, border_color=BORDER,
+                        dropdown_fg_color=SURFACE, dropdown_text_color=TEXT,
+                        dropdown_hover_color=BORDER,
+                        font=F(FONT_UI, 13)).pack(side="left")
+        _model_info = ctk.CTkLabel(self.f_model, text="ⓘ", fg_color="transparent",
+                                   text_color=ACCENT, font=F(FONT_UI, 15), cursor="hand2")
+        _model_info.pack(side="left", padx=(4, 0))
+        _Tooltip(_model_info, MODEL_HELP_TEXT)
+        self.model_var.trace_add("write", self._on_stt_model_change)
+
+        # ▸ WhisperX 額外：HF Token + 說話人數
+        self.f_wx = ctk.CTkFrame(self.stt_opt_row, fg_color="transparent")
+        ctk.CTkLabel(self.f_wx, text="HF Token", fg_color="transparent", text_color=SUBTEXT,
+                     font=F(FONT_UI, 14)).pack(side="left", padx=(16, 6))
+        self.token_var = tk.StringVar(value=self.cfg.get("hf_token", ""))
+        ctk.CTkEntry(self.f_wx, textvariable=self.token_var, width=210, show="*",
+                     fg_color=BG, text_color=TEXT, border_color=BORDER, border_width=1,
+                     font=F(FONT_UI, 13)).pack(side="left", padx=(0, 12))
+        ctk.CTkLabel(self.f_wx, text="說話人數", fg_color="transparent", text_color=SUBTEXT,
+                     font=F(FONT_UI, 14)).pack(side="left", padx=(0, 6))
+        self.speakers_var = tk.IntVar(value=0)
+        tk.Spinbox(self.f_wx, from_=0, to=10, textvariable=self.speakers_var,
+                   width=4, bg=SURFACE, fg=TEXT, buttonbackground=BORDER,
+                   relief="flat", font=(FONT_UI, 13),
+                   highlightthickness=1, highlightbackground=BORDER).pack(side="left")
+        ctk.CTkLabel(self.f_wx, text="（0 ＝ 自動）", fg_color="transparent", text_color=SUBTEXT,
+                     font=F(FONT_UI, 13)).pack(side="left", padx=(6, 0))
 
         # 來源選擇（兩個方形按鈕，置中）
         source = ctk.CTkFrame(tab_t, fg_color="transparent")
-        source.pack(pady=(14, 6))
+        source.pack(pady=(6, 3))
 
         audio_col = ctk.CTkFrame(source, fg_color="transparent")
-        audio_col.pack(side="left", padx=28, anchor="n")
-        audio_img = _make_audio_icon(40)
+        audio_col.pack(side="left", padx=24, anchor="n")
+        audio_img = _make_audio_icon(28)
         self._audio_icon = ctk.CTkImage(
-            light_image=audio_img, dark_image=audio_img, size=(40, 40)
+            light_image=audio_img, dark_image=audio_img, size=(28, 28)
         ) if audio_img else None
         ctk.CTkButton(
             audio_col, text="選擇音/影檔", image=self._audio_icon, compound="top",
             command=self.pick_audio,
             fg_color=ACCENT, hover_color="#2980B9", text_color="white",
-            font=F(FONT_UI, 15, weight="bold"), width=165, height=110,
+            font=F(FONT_UI, 14, weight="bold"), width=150, height=48,
         ).pack()
         self.audio_display_var = tk.StringVar(value="未選擇")
         ctk.CTkLabel(audio_col, textvariable=self.audio_display_var,
                      fg_color="transparent", text_color=SUBTEXT,
-                     font=F(FONT_UI, 12), width=165, anchor="center").pack(pady=(6, 0))
+                     font=F(FONT_UI, 12), width=150, anchor="center").pack(pady=(4, 0))
 
         yt_col = ctk.CTkFrame(source, fg_color="transparent")
-        yt_col.pack(side="left", padx=28, anchor="n")
-        yt_img = _make_yt_icon(40)
+        yt_col.pack(side="left", padx=24, anchor="n")
+        yt_img = _make_yt_icon(28)
         self._yt_icon = ctk.CTkImage(
-            light_image=yt_img, dark_image=yt_img, size=(40, 40)
+            light_image=yt_img, dark_image=yt_img, size=(28, 28)
         ) if yt_img else None
         self.yt_btn = ctk.CTkButton(
             yt_col, text="YouTube下載", image=self._yt_icon, compound="top",
-            command=self.download_youtube,
+            command=self.open_youtube_dialog,
             fg_color="#CC0000", hover_color="#990000", text_color="white",
-            font=F(FONT_UI, 15, weight="bold"), width=165, height=110,
+            font=F(FONT_UI, 14, weight="bold"), width=150, height=48,
         )
         self.yt_btn.pack()
-        self.yt_url_var = tk.StringVar()
-        ctk.CTkEntry(
-            yt_col, textvariable=self.yt_url_var,
-            placeholder_text="貼上 YouTube 網址…",
-            fg_color=SURFACE, text_color=TEXT,
-            border_color=BORDER, border_width=1,
-            font=F(FONT_UI, 12), width=336, height=32,
-        ).pack(pady=(6, 0))
-        self.cookies_browser_var = tk.StringVar(value=self.cfg.get("cookies_browser", "Cookies: 無"))
-        ctk.CTkComboBox(
-            yt_col, variable=self.cookies_browser_var,
-            values=["Cookies: 無", "Cookies: Chrome", "Cookies: Edge", "Cookies: Firefox", "Cookies: Brave", "Cookies: Opera", "Cookies: Safari", "Cookies: 檔案", "Cookies: 選擇檔案..."],
-            width=336, state="readonly",
-            command=self._on_cookies_change,
-            fg_color=SURFACE, text_color=TEXT, button_color=BORDER,
-            button_hover_color=ACCENT, border_color=BORDER,
-            dropdown_fg_color=SURFACE, dropdown_text_color=TEXT,
-            dropdown_hover_color=BORDER,
-            font=F(FONT_UI, 12)
-        ).pack(pady=(6, 0))
-
-        # WhisperX 選項（預設隱藏，選 WhisperX 才 pack 出來）
-        self.wx_frame = ctk.CTkFrame(tab_t, fg_color="transparent")
-
-        ctk.CTkLabel(self.wx_frame, text="HF Token",
-                     fg_color="transparent", text_color=TEXT,
-                     font=F(FONT_UI, 14), width=80, anchor="e").pack(side="left", padx=(0, 8))
-        self.token_var = tk.StringVar(value=self.cfg.get("hf_token", ""))
-        ctk.CTkEntry(self.wx_frame, textvariable=self.token_var, width=280, show="*",
-                     fg_color=SURFACE, text_color=TEXT,
-                     border_color=BORDER, border_width=1,
-                     font=F(FONT_UI, 13)).pack(side="left", padx=(0, 16))
-        ctk.CTkLabel(self.wx_frame, text="說話人數",
-                     fg_color="transparent", text_color=TEXT,
-                     font=F(FONT_UI, 14)).pack(side="left", padx=(0, 6))
-        self.speakers_var = tk.IntVar(value=0)
-        tk.Spinbox(self.wx_frame, from_=0, to=10, textvariable=self.speakers_var,
-                   width=4, bg=SURFACE, fg=TEXT, buttonbackground=BORDER,
-                   relief="flat", font=(FONT_UI, 13),
-                   highlightthickness=1, highlightbackground=BORDER).pack(side="left")
-        ctk.CTkLabel(self.wx_frame, text="（0 ＝ 自動）",
+        ctk.CTkLabel(yt_col, text="點一下貼上網址",
                      fg_color="transparent", text_color=SUBTEXT,
-                     font=F(FONT_UI, 13)).pack(side="left", padx=(6, 0))
+                     font=F(FONT_UI, 12), width=150, anchor="center").pack(pady=(4, 0))
 
-        # 輸出 + 情境說明
+        # 切到正確的引擎，顯示對應的設定列
+        self._on_engine_change()
+
+        # ── 輸出資料夾 + 字幕（移到情境上方，維持「設輸出 → 填情境 → 開始」順序）──
         r_out = ctk.CTkFrame(tab_t, fg_color="transparent")
         self.r_out = r_out
-        r_out.pack(fill="x", pady=4)
-
-        self.prompt_var = tk.StringVar(value="以下是繁體中文對話。")
-        ctk.CTkEntry(r_out, textvariable=self.prompt_var,
-                     fg_color=SURFACE, text_color=TEXT,
-                     border_color=BORDER, border_width=1,
-                     font=F(FONT_UI, 13)).pack(side="right", fill="x", expand=True)
-        ctk.CTkLabel(r_out, text="情境說明",
-                     fg_color="transparent", text_color=TEXT,
-                     font=F(FONT_UI, 14)).pack(side="right", padx=(20, 6))
+        r_out.pack(fill="x", pady=(6, 4))
         ctk.CTkButton(r_out, text="輸出資料夾", command=self.pick_output,
                       fg_color=SURFACE, hover_color=BORDER, text_color=TEXT,
                       font=F(FONT_UI, 14), width=110).pack(side="left")
@@ -1355,24 +1474,58 @@ class TranscribeApp:
         ctk.CTkCheckBox(r_out, text="輸出字幕 SRT", variable=self.srt_var,
                         fg_color=ACCENT, hover_color="#2980B9",
                         text_color=TEXT, font=F(FONT_UI, 13),
-                        ).pack(side="left", padx=(12, 0))
+                        ).pack(side="left", padx=(16, 0))
 
-        # ▶ 開始轉錄 / ■ 停止
-        trans_ctrl = ctk.CTkFrame(tab_t, fg_color="transparent")
-        trans_ctrl.pack(pady=(10, 8))
+        # ── 情境（左 65%）＋ 開始/停止（右側、上下排列）──
+        ctx_row = ctk.CTkFrame(tab_t, fg_color="transparent")
+        ctx_row.pack(fill="x", pady=(4, 4))
+        ctx_row.grid_columnconfigure(0, weight=1)   # 情境欄吃滿剩餘寬度
+        ctx_row.grid_columnconfigure(1, weight=0)   # 按鈕欄＝固定窄寬（內容自身寬度）
+
+        ctx_t = ctk.CTkFrame(ctx_row, fg_color="transparent")
+        ctx_t.grid(row=0, column=0, sticky="nsew", padx=(0, 14))
+        term_head = ctk.CTkFrame(ctx_t, fg_color="transparent")
+        term_head.pack(fill="x")
+        ctk.CTkLabel(term_head, text="關鍵術語 / 人名（用逗號分隔）", fg_color="transparent",
+                     text_color=TEXT, font=F(FONT_UI, 14)).pack(side="left")
+        self.term_budget_var = tk.StringVar(value="")
+        self.term_budget_label = ctk.CTkLabel(
+            term_head, textvariable=self.term_budget_var, fg_color="transparent",
+            text_color=SUBTEXT, font=F(FONT_UI, 12))
+        self.term_budget_label.pack(side="left", padx=(8, 0))
+        # 每場會議不同，故不預帶上次輸入（不持久化）
+        self.terms_var = tk.StringVar(value="")
+        self.terms_entry = ctk.CTkEntry(
+            ctx_t, textvariable=self.terms_var,
+            placeholder_text="例：鴻海, 俊傑, 依芬, CDP, 案號 A123（客戶/與會者/產品/案號，提示模型認對專有名詞）",
+            fg_color=SURFACE, text_color=TEXT, border_color=BORDER, border_width=1,
+            font=F(FONT_UI, 13))
+        self.terms_entry.pack(fill="x", pady=(2, 6))
+        self.terms_var.trace_add("write", self._update_term_budget)
+
+        ctk.CTkLabel(ctx_t, text="會議背景（給 AI 校正/摘要參考，不限字數）",
+                     fg_color="transparent", text_color=TEXT,
+                     font=F(FONT_UI, 14)).pack(anchor="w")
+        self.bg_box = ctk.CTkTextbox(ctx_t, height=48, fg_color=SURFACE, text_color=TEXT,
+                                     border_color=BORDER, border_width=1, font=F(FONT_UI, 13),
+                                     wrap="word")
+        self.bg_box.pack(fill="x", pady=(2, 0))
+
+        # 右側：開始 / 停止（窄固定寬、上下排列、撐滿情境區高度，好按）
+        btn_col = ctk.CTkFrame(ctx_row, fg_color="transparent")
+        btn_col.grid(row=0, column=1, sticky="nsew")
         self.start_btn = ctk.CTkButton(
-            trans_ctrl, text="▶  開始轉錄", command=self.start,
+            btn_col, text="▶ 開始轉錄", command=self.start, width=108,
             fg_color=GREEN, hover_color="#219A52", text_color="white",
-            font=F(FONT_UI, 16, weight="bold"), width=140, height=48,
-        )
-        self.start_btn.pack(side="left", padx=10)
+            font=F(FONT_UI, 14, weight="bold"))
+        self.start_btn.pack(fill="both", expand=True, pady=(18, 4))
         self.stop_btn = ctk.CTkButton(
-            trans_ctrl, text="■  停止", command=self.stop,
+            btn_col, text="■ 停止", command=self.stop, width=108,
             fg_color=RED, hover_color=RED_HOVER, text_color="white",
-            font=F(FONT_UI, 16, weight="bold"), width=110, height=48,
-            state="disabled",
-        )
-        self.stop_btn.pack(side="left", padx=10)
+            font=F(FONT_UI, 14, weight="bold"), state="disabled")
+        self.stop_btn.pack(fill="both", expand=True, pady=(4, 0))
+
+        self._update_term_budget()
 
         # ════════ 分頁二：AI 後製 ════════
         ctk.CTkLabel(
@@ -1496,11 +1649,11 @@ class TranscribeApp:
         # ════════ 共用底部：計時 / 狀態 / 進度 / Log（兩個分頁都看得到）════════
         # 計時器 + 百分比
         info_frame = ctk.CTkFrame(self.root, fg_color="transparent")
-        info_frame.grid(row=1, column=0, pady=(8, 2))
+        info_frame.grid(row=1, column=0, pady=(2, 2))
         self.timer_var = tk.StringVar(value="00:00:00")
         ctk.CTkLabel(info_frame, textvariable=self.timer_var,
                      fg_color="transparent", text_color=ACCENT,
-                     font=F("Consolas", 22, weight="bold")).pack(side="left", padx=(0, 16))
+                     font=F("Consolas", 18, weight="bold")).pack(side="left", padx=(0, 16))
         self.pct_var = tk.StringVar(value="")
         ctk.CTkLabel(info_frame, textvariable=self.pct_var,
                      fg_color="transparent", text_color=SUBTEXT,
@@ -1520,7 +1673,7 @@ class TranscribeApp:
             fg_color=SURFACE, progress_color=ACCENT,
         )
         self.progress.set(0)
-        self.progress.grid(row=3, column=0, padx=20, pady=6, sticky="we")
+        self.progress.grid(row=3, column=0, padx=20, pady=3, sticky="we")
 
         # Log header
         log_hdr = ctk.CTkFrame(self.root, fg_color="transparent")
@@ -1538,12 +1691,30 @@ class TranscribeApp:
             self.root,
             fg_color=SURFACE, text_color=TEXT,
             font=F("Consolas", 13),
-            height=160,
+            height=90,
             state="disabled",
         )
-        self.log.grid(row=5, column=0, padx=20, pady=(2, 12), sticky="we")
+        self.log.grid(row=5, column=0, padx=20, pady=(2, 12), sticky="nswe")
 
     # ── YouTube 下載 ───────────────────────────────
+    def open_youtube_dialog(self):
+        """點 YouTube 按鈕 → 彈出對話框輸入網址（與 Cookies），確認後直接下載。"""
+        dlg = YouTubeURLDialog(self.root, self.yt_url_var.get(), self.cookies_browser_var.get())
+        if not dlg.result:
+            return
+        url, cookies_choice = dlg.result
+        # 需要選 Cookies 檔案的兩種情況：先讓使用者挑檔
+        if cookies_choice == "Cookies: 選擇檔案...":
+            self.pick_cookies_file()
+            cookies_choice = self.cookies_browser_var.get()
+        elif cookies_choice == "Cookies: 檔案" and (
+                not self.cookies_file_path or not os.path.exists(self.cookies_file_path)):
+            self.pick_cookies_file()
+            cookies_choice = self.cookies_browser_var.get()
+        self.yt_url_var.set(url)
+        self.cookies_browser_var.set(cookies_choice)
+        self.download_youtube()
+
     def download_youtube(self):
         url = self.yt_url_var.get().strip()
         if not url:
@@ -1653,11 +1824,41 @@ class TranscribeApp:
         self._set_status("下載失敗", RED)
 
     # ── Callbacks ──────────────────────────────────
+    def _engine_val(self):
+        """目前選的辨識引擎內部值（whisper / whisperx）。"""
+        return _STT_LABEL2VAL.get(self.engine_var.get(), "whisper")
+
     def _on_engine_change(self):
-        if self.engine_var.get() == "whisperx":
-            self.wx_frame.pack(fill="x", pady=(0, 4), before=self.r_out)
+        val = self._engine_val()
+        for fr in (self.f_model, self.f_wx):
+            fr.pack_forget()
+        self.f_model.pack(side="left")
+        if val == "whisperx":
+            self.f_wx.pack(side="left")
+        save_config({"stt_engine": val})
+        self.cfg["stt_engine"] = val
+
+    def _on_stt_model_change(self, *_):
+        """記住使用者選的地端模型，下次啟動沿用。"""
+        if not hasattr(self, "model_var"):
+            return
+        m = self.model_var.get()
+        if m and self.cfg.get("stt_model") != m:
+            save_config({"stt_model": m})
+            self.cfg["stt_model"] = m
+
+    def _update_term_budget(self, *_):
+        """即時顯示「關鍵術語」還剩多少 token 預算；超出就紅字提醒會被裁切。"""
+        if not hasattr(self, "term_budget_var"):
+            return
+        terms = self.terms_var.get().strip()
+        left = _TERMS_BUDGET - len(terms)
+        if left >= 0:
+            self.term_budget_var.set(f"（給辨識・預算還剩 {left} 字）")
+            self.term_budget_label.configure(text_color=SUBTEXT)
         else:
-            self.wx_frame.pack_forget()
+            self.term_budget_var.set(f"（超出 {-left} 字，超出部分不會送進地端辨識）")
+            self.term_budget_label.configure(text_color=RED)
 
     def _sync_model_widget(self, engine):
         """切換引擎時更新模型下拉：雲端引擎顯示對應清單與已存值；
@@ -1907,6 +2108,14 @@ class TranscribeApp:
                         self._rename_speakers(data, dlg.result)
                 self.transcript_path = data
                 self.loaded_file_var.set(f"已載入：{os.path.basename(data)}")
+                # 把第一步驟的「會議背景」自動帶進第二步驟的補充框（空才帶，不蓋掉手動輸入）
+                try:
+                    if not self.ai_context_box.get("1.0", "end").strip():
+                        bg = self.bg_box.get("1.0", "end").strip()
+                        if bg:
+                            self.ai_context_box.insert("1.0", bg)
+                except Exception:
+                    pass
                 _open_file(data)
                 self.correct_btn.configure(state="normal", fg_color=BLUE, text_color="white")
                 self.notes_btn.configure(state="normal", fg_color=BLUE, text_color="white")
@@ -1938,9 +2147,10 @@ class TranscribeApp:
             self._set_status("請選擇輸出資料夾", RED)
             return
 
-        engine = self.engine_var.get()
+        engine = self._engine_val()
         lang = LANG_MAP.get(self.lang_var.get())
-        prompt = self.prompt_var.get().strip()
+        terms = self.terms_var.get().strip()
+        prompt = _build_initial_prompt(terms)  # 地端 Whisper 用，已裁在 token 上限內
 
         write_srt = self.srt_var.get()
         if write_srt and engine == "whisper":
@@ -1950,8 +2160,8 @@ class TranscribeApp:
                 parent=self.root,
             )
             if switch:
-                self.engine_var.set("whisperx")
-                self.wx_frame.grid()
+                self.engine_var.set(_STT_VAL2LABEL["whisperx"])
+                self._on_engine_change()
                 engine = "whisperx"
 
         if engine == "whisperx":
@@ -2086,17 +2296,24 @@ class TranscribeApp:
 
     # ── AI operations ──────────────────────────────
     def _ai_context(self):
-        """AI 校正/摘要用的情境：合併第一頁的轉錄情境（濾掉預設值）與第二頁的補充說明。"""
+        """AI 校正/摘要用的情境：合併第一步驟的關鍵術語＋會議背景，與第二步驟的補充說明。
+        會議背景在轉錄完成後會自動帶入第二步驟的補充框，故以第二步驟的內容為主、背景為備。"""
         parts = []
-        t1 = self.prompt_var.get().strip()
-        if t1 and t1 != "以下是繁體中文對話。":   # 預設的轉錄提示對 AI 沒意義，略過
-            parts.append(t1)
+        terms = self.terms_var.get().strip()
+        if terms:
+            parts.append(f"關鍵術語/人名：{terms}")
+        try:
+            bg1 = self.bg_box.get("1.0", "end").strip()
+        except Exception:
+            bg1 = ""
         try:
             t2 = self.ai_context_box.get("1.0", "end").strip()
         except Exception:
             t2 = ""
         if t2:
             parts.append(t2)
+        elif bg1:
+            parts.append(bg1)
         return "　".join(parts)
 
     def correct_transcript(self):
