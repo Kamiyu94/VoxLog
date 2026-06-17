@@ -80,7 +80,38 @@ if defined NEED_INSTALL (
   echo  [OK] 套件已是最新，略過安裝步驟
 )
 
-REM ---------- 5. 註冊 voxlog 快速指令（之後任何終端機打 voxlog 就能啟動） ----------
+REM ---------- 5. NVIDIA GPU：自動換成 CUDA 版 torch（語音轉錄大幅加速） ----------
+REM   requirements.txt 裝的是 CPU 版 torch（Windows 預設）。
+REM   若偵測到 NVIDIA 顯卡，就換成 cu128 版；torch 已釘 2.8.0（WhisperX 相容版），
+REM   cu128 同時支援 RTX 40 / 50 系列，舊卡也吃得到，故不需依顯卡分版本。
+where nvidia-smi >nul 2>nul
+if errorlevel 1 goto skip_gpu
+
+"venv\Scripts\python.exe" -c "import torch,sys; sys.exit(0 if torch.cuda.is_available() else 1)" >nul 2>nul
+if not errorlevel 1 (
+  echo  [OK] GPU 加速已啟用，無需重裝
+  goto skip_gpu
+)
+
+echo.
+echo  [*] 偵測到 NVIDIA 顯卡，但目前是 CPU 版 torch。
+echo      換裝 CUDA（cu128）版以啟用 GPU 加速，約需重新下載 2~3GB...
+echo.
+"venv\Scripts\python.exe" -m pip install --force-reinstall --no-deps torch==2.8.0 torchvision==0.23.0 torchaudio==2.8.0 --index-url https://download.pytorch.org/whl/cu128
+
+"venv\Scripts\python.exe" -c "import torch,sys; sys.exit(0 if torch.cuda.is_available() else 1)" >nul 2>nul
+if errorlevel 1 (
+  echo.
+  echo  [!] 換裝後仍偵測不到 GPU，多半是「NVIDIA 顯卡驅動太舊」。
+  echo      請到 GeForce Experience 或 nvidia.com 更新驅動後，再雙擊一次本檔。
+  echo      （程式現在仍可用，只是用 CPU 跑、較慢。）
+) else (
+  echo  [OK] GPU 加速已啟用（CUDA）
+)
+
+:skip_gpu
+
+REM ---------- 6. 註冊 voxlog 快速指令（之後任何終端機打 voxlog 就能啟動） ----------
 REM WindowsApps 預設就在使用者 PATH 上，丟一個 voxlog.cmd 進去即可，免改 PATH。
 set "SHIM_DIR=%LOCALAPPDATA%\Microsoft\WindowsApps"
 set "SHIM=%SHIM_DIR%\voxlog.cmd"
@@ -92,7 +123,7 @@ if exist "%SHIM_DIR%\" (
   if defined SHIM_NEW echo  [OK] 已註冊 voxlog 指令：之後在「命令提示字元」或 PowerShell 打 voxlog 就能啟動
 )
 
-REM ---------- 6. 啟動主程式 ----------
+REM ---------- 7. 啟動主程式 ----------
 echo.
 echo  [*] 啟動 VoxLog...
 echo.
