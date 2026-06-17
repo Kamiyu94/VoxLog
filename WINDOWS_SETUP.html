@@ -133,6 +133,7 @@
     <a href="#s4"><span class="n">4</span>建一個桌面捷徑</a>
     <a href="#s5"><span class="n">5</span>填 API Key 開始用</a>
     <a href="#update"><span class="n">🔄</span>之後怎麼更新到最新版</a>
+    <a href="#gpu"><span class="n">🚀</span>有 NVIDIA 顯卡？開啟 GPU 加速</a>
   </div>
 
   <!-- 1 -->
@@ -238,8 +239,42 @@
     </ul>
   </div>
 
+  <!-- GPU 加速 -->
   <hr>
-  <p class="muted"><strong>小提醒:</strong>若電腦有 NVIDIA 顯卡,語音轉錄會快很多(預設是 CPU 版,較慢但可用)。若只想用「載入 .md 做摘要」這類 AI 功能,不轉錄語音的話會更快。</p>
+  <h2 id="gpu"><span class="num" style="background:var(--green);">🚀</span>有 NVIDIA 顯卡?開啟 GPU 加速</h2>
+  <p>語音轉錄用 <strong>NVIDIA 顯卡(GPU)</strong>會比 CPU 快好幾倍。但有個坑要知道:<code>VoxLog.bat</code> 自動裝的 PyTorch <strong>預設是 CPU 版</strong>,就算你有顯卡也不會用到 —— 這是 Windows 上的預設行為,不是壞掉。要吃到 GPU,得手動換成 CUDA 版。</p>
+  <div class="note tip">
+    <span class="ic">💡</span>沒有 NVIDIA 顯卡(或只用「載入 .md 做摘要」不轉錄語音)的人,<strong>這段可以略過</strong>,CPU 版照常能用。
+  </div>
+
+  <h3>① 先確認現在有沒有在用 GPU</h3>
+  <p class="muted">進 VoxLog 資料夾 → 在檔案總管網址列打 <code>cmd</code> 按 Enter 開終端機,貼這行:</p>
+  <div class="code">
+    <button class="copy">複製</button>
+    <pre>venv\Scripts\python -c "import torch; print(torch.__version__, torch.cuda.is_available())"</pre>
+  </div>
+  <p class="muted">看輸出最後一個字:</p>
+  <ul style="margin:6px 0 0; padding-left:20px;">
+    <li>結尾是 <code>...+cpu False</code> → <strong>裝到 CPU 版了</strong>,往下做②修復。</li>
+    <li>結尾是 <code>...+cu121 True</code>(有 <code>cu</code> 而且 <code>True</code>)→ <strong>已經在用 GPU 了</strong>,不用做任何事。</li>
+  </ul>
+
+  <h3>② 換成 CUDA 版的 PyTorch</h3>
+  <p class="muted">在同一個終端機,貼這兩行(先移除 CPU 版、再裝 CUDA 版):</p>
+  <div class="code">
+    <button class="copy">複製</button>
+    <pre>venv\Scripts\python -m pip uninstall -y torch torchvision torchaudio
+venv\Scripts\python -m pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121</pre>
+  </div>
+  <div class="note tip">
+    <span class="ic">📦</span>這些輪子<strong>自帶 CUDA runtime</strong>,你<strong>不用</strong>另外裝 CUDA Toolkit。唯一前提是顯卡<strong>驅動程式要夠新</strong>(用 GeForce Experience 或到 NVIDIA 官網更新驅動即可)。
+  </div>
+
+  <h3>③ 驗證</h3>
+  <p class="muted">再跑一次①的指令,看到 <code>True</code> 就成功了。之後開 VoxLog 轉錄,Log 欄會印「<strong>使用裝置:CUDA(你的顯卡名)</strong>」;若還是印「使用裝置:CPU(無)」就代表沒換成功,回頭再檢查一次。</p>
+  <div class="note warn">
+    <span class="ic">⚠️</span>之後若 <code>VoxLog.bat</code> 因為 <code>requirements.txt</code> 改動而<strong>重裝套件</strong>,可能會把 torch 蓋回 CPU 版 —— 屆時重跑一次②即可。
+  </div>
 
   <footer>
     VoxLog · Kamiyu Lab<br>
