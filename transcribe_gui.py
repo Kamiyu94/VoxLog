@@ -1201,7 +1201,18 @@ def whisperx_worker(audio, out_dir, model_name, lang, hf_token, num_speakers, pr
             os.environ["PATH"] += ";" + r"C:\Users\kamiy\AppData\Local\Microsoft\WinGet\Packages\Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe\ffmpeg-8.1.1-full_build\bin"
 
         if torch.cuda.is_available():
-            device, compute_type, gpu_name = "cuda", "int8_float16", torch.cuda.get_device_name(0)
+            device, gpu_name = "cuda", torch.cuda.get_device_name(0)
+            # 舊卡（Pascal/Maxwell 等，compute capability < 7.0）FP16 很弱，
+            # 用 int8_float16 反而慢/不穩，自動降成純 int8。Volta(7.0)+ 才用 int8_float16。
+            try:
+                cc_major = torch.cuda.get_device_capability(0)[0]
+            except Exception:
+                cc_major = 7
+            if cc_major >= 7:
+                compute_type = "int8_float16"
+            else:
+                compute_type = "int8"
+                log_q.put(f"偵測到較舊的顯卡（{gpu_name}），自動改用 int8 計算（FP16 在這代卡較慢）。")
         else:
             device, compute_type, gpu_name = "cpu", "int8", "無（CPU）"
 
