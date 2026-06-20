@@ -68,7 +68,12 @@ VoxLog 是一個具備圖形化介面 (GUI) 的語音轉文字與 AI 輔助處�
    # ❗不要用 macOS 系統內建的 Python（會讓 GUI 崩潰，詳見疑難排解 ①）
    # 改裝 Homebrew 的 Python 與 tkinter 支援
    brew install python@3.11 python-tk@3.11
+
+   # whisper.cpp 引擎（MacBook Air 等較低階機器建議用，輕量、不吃記憶體）
+   brew install whisper-cpp
    ```
+   > 💡 MacBook Air / 8GB 記憶體的機器，VoxLog 第一次啟動會自動把辨識引擎選成
+   > 「whisper.cpp」，所以**這台請務必先裝好 `whisper-cpp`**；模型會在第一次轉錄時自動下載。
 
 3. **建立虛擬環境並安裝套件**
    ```bash

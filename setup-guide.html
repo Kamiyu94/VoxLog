@@ -462,6 +462,17 @@ pip install whisperx</code></pre>
     </div>
 
     <div class="card">
+      <div class="card-title">引擎 C：whisper.cpp（MacBook Air／8GB 機器建議）</div>
+      <p style="color:var(--subtext); margin-bottom:10px;">輕量、記憶體佔用極低（約 1GB，且不隨錄音長度增加），在 Apple Silicon 用 Metal 加速。<strong>不是 pip 套件</strong>，要用 Homebrew 裝（不是 Python 套件，所以不在 <code>requirements.txt</code> 裡）。</p>
+      <pre><code># macOS
+brew install whisper-cpp</code></pre>
+      <div class="callout callout-tip" style="margin-top:12px;">
+        <span class="callout-icon">💡</span>
+        <span><strong>MacBook Air / 8GB 記憶體</strong>的機器，VoxLog 第一次啟動會自動把辨識引擎選成「whisper.cpp」，所以這台務必先裝好。辨識模型（預設 medium）會在<strong>第一次轉錄時自動下載</strong>，不用手動處理。whisper.cpp 沒有內建說話人分離，可改用第二步驟的「自動標註說話方」由 AI 依內容判斷。</span>
+      </div>
+    </div>
+
+    <div class="card">
       <div class="card-title">YouTube 下載功能（選用）</div>
       <pre><code>pip install yt-dlp</code></pre>
       <p>不需要此功能可跳過，App 不會因此無法啟動。</p>

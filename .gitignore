@@ -41,3 +41,9 @@ reference/
 # OS generated files
 .DS_Store
 Thumbs.db
+
+# whisper.cpp 模型（大檔，不上傳）
+models/
+*.bin
+voxair-poc/models/
+voxair-poc/

@@ -7,6 +7,7 @@ import math
 import platform
 import threading
 import subprocess
+import shutil
 import multiprocessing
 from datetime import datetime
 import tkinter as tk
@@ -140,6 +141,18 @@ NOTES_PROMPT = """你是專業的會議記錄整理者。以下是一份逐字�
 
 ### 議題標籤
 （5–8 個具體討論的議題或關鍵詞，格式 #議題，同一行以空格分隔）
+
+逐字稿內容：
+{transcript}"""
+
+CORRECT_AND_PARTY_PROMPT = """以下是一份語音辨識產生的逐字稿，沒有說話人標記。{context}
+請一次完成兩件事：（1）修正明顯的辨識錯誤（空耳、同音異字）；（2）判斷每一段是「哪一方」說的，在每段前面標上方別。規則如下：
+- 先判斷這場對話有哪幾方；若上面的背景資訊有指明各方是誰（人名或角色），就用背景給的名稱，否則自行判斷合適的角色名（例如：提供方／諮詢方、主管／部屬、我方／客方）。
+- 每一行格式為「〔方別〕」接原本的時間戳與（已校正的）內容，例如：〔王經理〕[00:12 --> 00:18] 我們的產品可以做到…
+- 「對」「嗯嗯」「了解」「沒錯」這種沒有實質內容的短附和，歸給「前一位有實質發言的人」，不要自成一方，也不要誤判成另一方。
+- 真的完全無法判斷時才標〔不確定〕。
+- 保留所有時間戳；不要增加、刪除、合併段落；不要改變說話內容的意思；以繁體中文輸出。
+- 直接輸出處理後的逐字稿，前後不要加任何說明或前言。
 
 逐字稿內容：
 {transcript}"""
@@ -326,6 +339,7 @@ _ENGINE_MODEL_DEFAULT = {
 STT_ENGINES = [
     ("whisper",      "地端 Whisper"),
     ("whisperx",     "地端 WhisperX（含說話人辨識）"),
+    ("whispercpp",   "地端 whisper.cpp（MacBook Air）"),
 ]
 _STT_LABEL2VAL = {lb: v for v, lb in STT_ENGINES}
 _STT_VAL2LABEL = {v: lb for v, lb in STT_ENGINES}
@@ -376,6 +390,23 @@ def _suggest_model():
     if gb < 24:
         return "medium"
     return "large-v3"
+
+
+def _suggest_stt_engine():
+    """首次啟動時依機器條件建議地端引擎。MacBook Air 或記憶體 ≤ 8GB → whisper.cpp
+    （輕、不吃記憶體、Mac 上穩）；其餘維持原本的 whisper。只在沒有存過引擎時呼叫。"""
+    try:
+        gb = _total_ram_gb()
+        if gb is not None and gb <= 8.5:
+            return "whispercpp"
+        if sys.platform == "darwin":
+            out = subprocess.run(["system_profiler", "SPHardwareDataType"],
+                                 capture_output=True, text=True, timeout=8).stdout or ""
+            if "MacBook Air" in out:
+                return "whispercpp"
+    except Exception:
+        pass
+    return "whisper"
 
 
 def verify_engine(ai_engine, api_key):
@@ -559,11 +590,14 @@ def txt_to_srt_ai(transcript_path, ai_engine, api_key, out_path=None):
     return out_path
 
 
-def correct_transcript(transcript_path, ai_engine, api_key, out_path=None, context=""):
+def correct_transcript(transcript_path, ai_engine, api_key, out_path=None, context="", label_parties=False):
+    """校正辨識錯誤。label_parties=True 時（稿子沒有說話人標記，如 whisper/whisper.cpp）
+    同一次 API 順手依內容標出「哪一方」說的，省一半 token。"""
     with open(transcript_path, "r", encoding="utf-8") as f:
         transcript = f.read()
     ctx = f"\n背景資訊：{context}" if context else ""
-    corrected = _call_ai(CORRECT_PROMPT.format(context=ctx, transcript=transcript), ai_engine, api_key)
+    template = CORRECT_AND_PARTY_PROMPT if label_parties else CORRECT_PROMPT
+    corrected = _call_ai(template.format(context=ctx, transcript=transcript), ai_engine, api_key)
     if out_path is None:
         base = transcript_path.rsplit("_transcript", 1)[0]
         out_path = base + "_transcript_corrected.txt"
@@ -744,6 +778,18 @@ class _StdoutCapture:
         pass
 
 
+class _ScaledProg:
+    """把「單一切段內 0–100% 的進度」換算成「整檔（第 i/n 段）的全域百分比」再轉發，
+    讓切塊處理時進度條在每一段裡面也會平滑前進，而不是一段跳一格。"""
+
+    def __init__(self, real_q, i, n):
+        self._q, self._i, self._n = real_q, i, n
+
+    def put(self, p):
+        frac = min(max(p, 0), 100) / 100.0
+        self._q.put(int((self._i + frac) / self._n * 100))
+
+
 def _collapse_repeats(text):
     """壓掉 Whisper 幻覺式重複（對對對對…、我懂了 我懂了…），保留正常內容。"""
     if not text:
@@ -757,6 +803,323 @@ def _collapse_repeats(text):
     # 完整句子重複（以標點結尾的長句）
     text = re.sub(r'([一-鿿，。？！、 ]{8,30}[？。，！])\s*(\1\s*){1,}', r'\1', text)
     return text
+
+
+# ── 長檔切段 + checkpoint ──────────────────────────────────────────────
+# 動機：長音檔在地端轉錄/說話人辨識會吃大量記憶體（pyannote 吃整檔），且「跑到
+# 一半崩潰就全盤皆輸」。超過門檻的檔案會先在「靜音處」就近切成數段，逐段轉錄，
+# 每段一完成就寫一份 checkpoint；任何一段失敗，前面成功的段落都保留並縫成「部分
+# 逐字稿」。切段會讓 pyannote 的說話人編號跨段不一致，但這由第二步驟的 AI 校正
+# 依內容重新統一「哪一方」，故此處不強求跨段聲紋一致。
+CHUNK_THRESHOLD_SEC = 1200   # 超過 20 分鐘才啟用切段（短檔走原本單次流程，零影響）
+CHUNK_TARGET_SEC = 600       # 每段目標長度約 10 分鐘，於最接近的靜音處下刀
+
+
+def _json_default(o):
+    try:
+        return float(o)
+    except Exception:
+        return str(o)
+
+
+def _detect_silences(audio_path):
+    """用 ffmpeg silencedetect 找靜音區間，回傳 [(start, end), ...]（秒）。"""
+    import subprocess
+    cmd = ["ffmpeg", "-hide_banner", "-vn", "-i", audio_path,
+           "-af", "silencedetect=noise=-30dB:d=0.5", "-f", "null", "-"]
+    try:
+        proc = subprocess.run(cmd, capture_output=True, text=True)
+    except Exception:
+        return []
+    err = proc.stderr or ""
+    starts = [float(x) for x in re.findall(r"silence_start:\s*([0-9.]+)", err)]
+    ends = [float(x) for x in re.findall(r"silence_end:\s*([0-9.]+)", err)]
+    sil = []
+    for i, e in enumerate(ends):
+        s = starts[i] if i < len(starts) else max(0.0, e - 0.5)
+        sil.append((s, e))
+    return sil
+
+
+def _plan_cuts(duration, silences, target=CHUNK_TARGET_SEC):
+    """規劃切點：每隔約 target 秒，挑最接近的靜音中點下刀；找不到靜音才硬切。
+    回傳 [(start, end), ...] 涵蓋整個檔案。"""
+    mids = sorted((s + e) / 2 for s, e in silences)
+    cuts, last = [], 0.0
+    while duration - last > target * 1.5:
+        ideal = last + target
+        lo, hi = last + target * 0.5, last + target * 1.5
+        cand = [m for m in mids if lo <= m <= hi]
+        cut = min(cand, key=lambda m: abs(m - ideal)) if cand else ideal
+        cuts.append(round(cut, 3))
+        last = cut
+    bounds, prev = [], 0.0
+    for c in cuts:
+        bounds.append((prev, c))
+        prev = c
+    bounds.append((prev, round(duration, 3)))
+    return bounds
+
+
+def _cut_audio(audio_path, bounds, work_dir):
+    """依 bounds 切出 16k 單聲道 wav；已存在的段沿用（支援續傳）。
+    回傳 [(chunk_path, start_offset_sec), ...]。"""
+    import subprocess
+    paths = []
+    for i, (s, e) in enumerate(bounds):
+        out = os.path.join(work_dir, f"chunk_{i:03d}.wav")
+        if not os.path.exists(out):
+            cmd = ["ffmpeg", "-hide_banner", "-y", "-ss", f"{s:.3f}", "-i", audio_path,
+                   "-t", f"{e - s:.3f}", "-ar", "16000", "-ac", "1", out]
+            subprocess.run(cmd, capture_output=True)
+        paths.append((out, s))
+    return paths
+
+
+def _offset_segments(segs, off):
+    """把一段內所有時間戳（含逐字 words）加上該段的起始偏移，回到全片時間軸。"""
+    out = []
+    for s in segs:
+        s = dict(s)
+        if s.get("start") is not None:
+            s["start"] = float(s["start"]) + off
+        if s.get("end") is not None:
+            s["end"] = float(s["end"]) + off
+        if s.get("words"):
+            ws = []
+            for w in s["words"]:
+                w = dict(w)
+                if w.get("start") is not None:
+                    w["start"] = float(w["start"]) + off
+                if w.get("end") is not None:
+                    w["end"] = float(w["end"]) + off
+                ws.append(w)
+            s["words"] = ws
+        out.append(s)
+    return out
+
+
+def _plan_or_load_bounds(audio, duration, work_dir, log_q):
+    """讀既有 manifest（續傳時切點一致）或重新規劃切點並寫 manifest。"""
+    import json
+    manifest = os.path.join(work_dir, "manifest.json")
+    if os.path.exists(manifest):
+        try:
+            with open(manifest, encoding="utf-8") as f:
+                return [tuple(b) for b in json.load(f)["bounds"]]
+        except Exception:
+            pass
+    log_q.put("分析靜音以決定切點...")
+    bounds = _plan_cuts(duration, _detect_silences(audio))
+    with open(manifest, "w", encoding="utf-8") as f:
+        json.dump({"bounds": bounds}, f)
+    return bounds
+
+
+def _collect_done_chunks(work_dir, n):
+    """收集 0..n-1 連續已完成的 chunk json；遇到缺號即停（避免時間軸出現空洞）。"""
+    import json
+    all_segs, done = [], 0
+    for i in range(n):
+        cj = os.path.join(work_dir, f"chunk_{i:03d}.json")
+        if not os.path.exists(cj):
+            break
+        with open(cj, encoding="utf-8") as f:
+            all_segs.extend(json.load(f))
+        done += 1
+    return all_segs, done
+
+
+def _write_transcript_plain(out_path, all_segs):
+    if os.path.exists(out_path):
+        os.remove(out_path)  # 新檔的建立/加入日期=現在，免得 Finder 依加入日期排序排回舊日期
+    with open(out_path, "w", encoding="utf-8") as f:
+        for seg in all_segs:
+            start, end = int(seg["start"]), int(seg["end"])
+            ts = f"[{start//60:02d}:{start%60:02d} --> {end//60:02d}:{end%60:02d}]"
+            f.write(f"{ts} {_collapse_repeats(seg['text'].strip())}\n")
+
+
+def _write_transcript_speaker(out_path, all_segs, converter):
+    if os.path.exists(out_path):
+        os.remove(out_path)  # 同上：新檔日期=現在
+    with open(out_path, "w", encoding="utf-8") as f:
+        current = None
+        for seg in all_segs:
+            start, end = int(seg.get("start", 0)), int(seg.get("end", 0))
+            speaker = seg.get("speaker", "SPEAKER_??")
+            text = seg.get("text", "").strip()
+            if not text:
+                continue
+            if converter:
+                text = converter.convert(text)
+            text = _collapse_repeats(text)
+            ts = f"[{start//60:02d}:{start%60:02d} --> {end//60:02d}:{end%60:02d}]"
+            if speaker != current:
+                if current is not None:
+                    f.write("\n")
+                f.write(f"{speaker}：\n")
+                current = speaker
+            f.write(f"{ts} {text}\n")
+
+
+def _write_srt_segments(srt_path, all_segs, converter=None):
+    all_chunks = []
+    for seg in all_segs:
+        words = seg.get("words", [])
+        if words:
+            for s, e, text in _words_to_srt_segments(words):
+                if converter:
+                    text = converter.convert(text)
+                all_chunks.append((s, e, text))
+        else:
+            text = seg.get("text", "").strip()
+            if converter:
+                text = converter.convert(text)
+            all_chunks.append((seg.get("start", 0), seg.get("end", 0), text))
+    with open(srt_path, "w", encoding="utf-8") as f:
+        for i, (s, e, text) in enumerate(all_chunks, 1):
+            f.write(f"{i}\n{_format_srt_time(s)} --> {_format_srt_time(e)}\n{text}\n\n")
+
+
+def _finalize_chunks(audio, out_dir, work_dir, n, failed, write_srt,
+                     speaker_mode, converter, result_q, log_q):
+    """縫合已完成的段落；全完成→寫正式稿並清掉工作目錄，部分完成→存『部分逐字稿』並保留工作目錄供續傳。"""
+    import shutil
+    all_segs, done = _collect_done_chunks(work_dir, n)
+    if done == 0:
+        result_q.put(("error", failed or "所有段落皆轉錄失敗"))
+        return
+    base = os.path.splitext(os.path.basename(audio))[0]
+    partial = done < n
+    suffix = "_transcript_部分完成.txt" if partial else "_transcript.txt"
+    out_path = os.path.join(out_dir, f"{base}{suffix}")
+    if speaker_mode:
+        _write_transcript_speaker(out_path, all_segs, converter)
+    else:
+        _write_transcript_plain(out_path, all_segs)
+    if write_srt:
+        srt_path = os.path.join(out_dir, f"{base}{'_部分' if partial else ''}.srt")
+        _write_srt_segments(srt_path, all_segs, converter)
+        log_q.put(f"字幕已輸出：{os.path.basename(srt_path)}")
+    if partial:
+        log_q.put(f"⚠ 只完成 {done}/{n} 段（最後一段失敗），已保留並存成「{os.path.basename(out_path)}」。"
+                  f"修正問題後重新轉錄同一檔，會自動從第 {done + 1} 段續跑。")
+    else:
+        shutil.rmtree(work_dir, ignore_errors=True)
+        # 清掉先前失敗留下的「部分完成」殘檔，避免混淆
+        for stale in (os.path.join(out_dir, f"{base}_transcript_部分完成.txt"),
+                      os.path.join(out_dir, f"{base}_部分.srt")):
+            try:
+                os.remove(stale)
+            except OSError:
+                pass
+        log_q.put(f"全部 {n} 段完成並縫合。")
+    result_q.put(("done", out_path))
+
+
+def _run_whisper_chunked(model, audio, out_dir, lang, prompt, write_srt,
+                         duration, result_q, log_q, prog_q):
+    import json
+    base = os.path.splitext(os.path.basename(audio))[0]
+    work_dir = os.path.join(out_dir, f".voxlog_chunks_{base}")
+    os.makedirs(work_dir, exist_ok=True)
+    bounds = _plan_or_load_bounds(audio, duration, work_dir, log_q)
+    chunks = _cut_audio(audio, bounds, work_dir)
+    n = len(chunks)
+    log_q.put(f"長檔（{int(duration//60)} 分）已切成 {n} 段，逐段轉錄並建立 checkpoint...")
+    failed = None
+    for i, (cpath, off) in enumerate(chunks):
+        cj = os.path.join(work_dir, f"chunk_{i:03d}.json")
+        if os.path.exists(cj):
+            log_q.put(f"段 {i+1}/{n} 已有 checkpoint，沿用。")
+        else:
+            try:
+                log_q.put(f"轉錄段 {i+1}/{n} ...")
+                # 用 stdout 擷取 whisper 的逐段時間，換算成全域進度 → 段內也會平滑前進
+                chunk_dur = bounds[i][1] - bounds[i][0]
+                _saved_stdout = sys.stdout
+                sys.stdout = _StdoutCapture(chunk_dur, _ScaledProg(prog_q, i, n))
+                try:
+                    result = model.transcribe(cpath, language=lang,
+                                              initial_prompt=prompt or None,
+                                              word_timestamps=True, verbose=True)
+                finally:
+                    sys.stdout = _saved_stdout
+                segs = _offset_segments(result["segments"], off)
+                with open(cj, "w", encoding="utf-8") as f:
+                    json.dump(segs, f, ensure_ascii=False, default=_json_default)
+            except Exception as e:
+                failed = str(e)
+                log_q.put(f"⚠ 段 {i+1}/{n} 失敗：{e}")
+                break
+        prog_q.put(int((i + 1) / n * 100))
+    _finalize_chunks(audio, out_dir, work_dir, n, failed, write_srt,
+                     speaker_mode=False, converter=None,
+                     result_q=result_q, log_q=log_q)
+
+
+def _run_whisperx_chunked(model, audio, out_dir, lang, hf_token, num_speakers,
+                          write_srt, device, duration, result_q, log_q, prog_q):
+    import json, whisperx
+    from whisperx.diarize import DiarizationPipeline
+    try:
+        import opencc
+        converter = opencc.OpenCC("s2twp")
+    except Exception:
+        converter = None
+    base = os.path.splitext(os.path.basename(audio))[0]
+    work_dir = os.path.join(out_dir, f".voxlog_chunks_{base}")
+    os.makedirs(work_dir, exist_ok=True)
+    bounds = _plan_or_load_bounds(audio, duration, work_dir, log_q)
+    chunks = _cut_audio(audio, bounds, work_dir)
+    n = len(chunks)
+    log_q.put(f"長檔（{int(duration//60)} 分）已切成 {n} 段，逐段轉錄＋說話人辨識並建立 checkpoint...")
+    log_q.put("提醒：切段後說話人編號跨段不保證一致，請於第二步驟用 AI 校正依內容統一『哪一方』。")
+    diarize_model = DiarizationPipeline(token=hf_token, device=device)
+    model_a = metadata = align_lang = None
+    failed = None
+    for i, (cpath, off) in enumerate(chunks):
+        cj = os.path.join(work_dir, f"chunk_{i:03d}.json")
+        if os.path.exists(cj):
+            log_q.put(f"段 {i+1}/{n} 已有 checkpoint，沿用。")
+            prog_q.put(int((i + 1) / n * 100))
+            continue
+        try:
+            log_q.put(f"轉錄段 {i+1}/{n} ...")
+            audio_data = whisperx.load_audio(cpath)
+            tkw = {"batch_size": 8}
+            if lang:
+                tkw["language"] = lang
+            result = model.transcribe(audio_data, **tkw)
+            prog_q.put(int((i + 0.4) / n * 100))   # 轉錄完
+            dl = result.get("language", lang or "zh")
+            if model_a is None or dl != align_lang:
+                model_a, metadata = whisperx.load_align_model(language_code=dl, device=device)
+                align_lang = dl
+            log_q.put(f"段 {i+1}/{n}：對齊時間戳...")
+            result = whisperx.align(result["segments"], model_a, metadata, audio_data,
+                                    device, return_char_alignments=False)
+            prog_q.put(int((i + 0.65) / n * 100))  # 對齊完
+            log_q.put(f"段 {i+1}/{n}：分析說話人...")
+            dkw = {}
+            if num_speakers and num_speakers > 0:
+                dkw["num_speakers"] = num_speakers
+            diarize_segments = diarize_model(audio_data, **dkw)
+            result = whisperx.assign_word_speakers(diarize_segments, result)
+            prog_q.put(int((i + 0.9) / n * 100))   # 說話人辨識完
+            segs = _offset_segments(result["segments"], off)
+            with open(cj, "w", encoding="utf-8") as f:
+                json.dump(segs, f, ensure_ascii=False, default=_json_default)
+            del audio_data
+        except Exception as e:
+            failed = str(e)
+            log_q.put(f"⚠ 段 {i+1}/{n} 失敗：{e}")
+            break
+        prog_q.put(int((i + 1) / n * 100))
+    _finalize_chunks(audio, out_dir, work_dir, n, failed, write_srt,
+                     speaker_mode=True, converter=converter,
+                     result_q=result_q, log_q=log_q)
 
 
 def whisper_worker(audio, out_dir, model_name, lang, prompt, write_srt, result_q, log_q, prog_q):
@@ -784,6 +1147,12 @@ def whisper_worker(audio, out_dir, model_name, lang, prompt, write_srt, result_q
         m, s = int(duration // 60), int(duration % 60)
         log_q.put(f"開始轉錄：{os.path.basename(audio)}（{m} 分 {s} 秒）")
 
+        if duration > CHUNK_THRESHOLD_SEC:
+            del audio_data  # 改走切段流程，不需整檔常駐記憶體
+            _run_whisper_chunked(model, audio, out_dir, lang, prompt, write_srt,
+                                 duration, result_q, log_q, prog_q)
+            return
+
         sys.stdout = _StdoutCapture(duration, prog_q)
         result = model.transcribe(audio, language=lang, verbose=True,
                                   initial_prompt=prompt or None,
@@ -793,6 +1162,8 @@ def whisper_worker(audio, out_dir, model_name, lang, prompt, write_srt, result_q
 
         base = os.path.splitext(os.path.basename(audio))[0]
         out_path = os.path.join(out_dir, f"{base}_transcript.txt")
+        if os.path.exists(out_path):
+            os.remove(out_path)  # 砍掉舊同名檔再寫，讓建立/加入日期=現在（否則 Finder 依加入日期排序會排回舊日期）
         with open(out_path, "w", encoding="utf-8") as f:
             for seg in result["segments"]:
                 start = int(seg["start"])
@@ -844,8 +1215,12 @@ def whisperx_worker(audio, out_dir, model_name, lang, hf_token, num_speakers, pr
         duration = len(audio_data) / 16000
         m, s = int(duration // 60), int(duration % 60)
         log_q.put(f"開始轉錄：{os.path.basename(audio)}（{m} 分 {s} 秒）")
-        if duration > 3600:  # 地端講者分離（pyannote）吃整檔記憶體，長檔易 OOM
-            log_q.put("⚠ 超過 1 小時的長檔：說話人辨識較吃記憶體；若記憶體不足而中途失敗，可改小模型或分段處理。")
+        if duration > CHUNK_THRESHOLD_SEC:
+            # 長檔：切段 + checkpoint，避免 pyannote 吃整檔記憶體與「崩潰全盤皆輸」
+            del audio_data
+            _run_whisperx_chunked(model, audio, out_dir, lang, hf_token, num_speakers,
+                                  write_srt, device, duration, result_q, log_q, prog_q)
+            return
 
         transcribe_kwargs = {"batch_size": 8}
         if lang:
@@ -926,6 +1301,120 @@ def whisperx_worker(audio, out_dir, model_name, lang, hf_token, num_speakers, pr
         result_q.put(("error", str(e)))
 
 
+# ── whisper.cpp 引擎（輕量、低記憶體，給 MacBook Air 等機器）─────────────
+# 走外部 whisper-cli（brew install whisper-cpp / Windows 預編譯）+ ggml 量化模型，
+# 記憶體佔用極低且不隨音檔長度成長。無內建說話人辨識——「哪一方」交給第二步驟
+# 的 AI 校正依內容判斷。模型首次使用會自動下載到專案的 models/ 目錄。
+_WHISPERCPP_MODELS = {
+    "tiny": "ggml-tiny.bin",
+    "base": "ggml-base.bin",
+    "small": "ggml-small-q5_1.bin",      # 量化版，省記憶體
+    "medium": "ggml-medium-q5_0.bin",    # MacBook Air 建議用這個（準度/記憶體最佳平衡）
+    "large": "ggml-large-v3.bin",
+    "large-v3": "ggml-large-v3.bin",
+}
+_WHISPERCPP_BASE_URL = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/"
+
+
+def _ensure_whispercpp_model(size, models_dir, log_q):
+    """確保 ggml 模型檔存在，不存在則自動下載。回傳模型路徑。"""
+    import urllib.request
+    fname = _WHISPERCPP_MODELS.get(size, f"ggml-{size}.bin")
+    path = os.path.join(models_dir, fname)
+    if os.path.exists(path):
+        return path
+    os.makedirs(models_dir, exist_ok=True)
+    log_q.put(f"首次使用 whisper.cpp「{size}」模型，下載中（{fname}）…首次需一兩分鐘，之後就不必再等。")
+    tmp = path + ".part"
+    urllib.request.urlretrieve(_WHISPERCPP_BASE_URL + fname, tmp)
+    os.replace(tmp, path)
+    log_q.put(f"模型下載完成：{fname}")
+    return path
+
+
+def whispercpp_worker(audio, out_dir, model_name, lang, prompt, write_srt, result_q, log_q, prog_q):
+    import subprocess, shutil, json, tempfile, platform, re as _re
+    try:
+        if platform.system() == "Windows":
+            os.environ["PATH"] += ";" + r"C:\Users\kamiy\AppData\Local\Microsoft\WinGet\Packages\Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe\ffmpeg-8.1.1-full_build\bin"
+
+        binary = shutil.which("whisper-cli") or shutil.which("whisper-cpp")
+        if not binary:
+            result_q.put(("error",
+                "找不到 whisper-cli。\nMac 請在終端機執行：brew install whisper-cpp\n"
+                "Windows 請安裝 whisper.cpp 並將其加入系統 PATH。"))
+            return
+
+        models_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "models")
+        log_q.put(f"使用引擎：whisper.cpp（模型 {model_name}）")
+        model_path = _ensure_whispercpp_model(model_name, models_dir, log_q)
+
+        # whisper.cpp 需要 16k 單聲道 wav，先用 ffmpeg 轉檔
+        log_q.put(f"準備音檔：{os.path.basename(audio)}")
+        wav = os.path.join(tempfile.gettempdir(), "voxlog_wcpp_input.wav")
+        subprocess.run(["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-i", audio,
+                        "-ar", "16000", "-ac", "1", wav], check=True)
+
+        base = os.path.splitext(os.path.basename(audio))[0]
+        out_json_base = os.path.join(tempfile.gettempdir(), f"voxlog_wcpp_{base}")
+        cmd = [binary, "-m", model_path, "-f", wav, "-oj", "-of", out_json_base, "-pp",
+               "-l", lang or "auto"]
+        if prompt:
+            cmd += ["--prompt", prompt]
+        log_q.put("whisper.cpp 轉錄中…")
+        proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
+        for line in proc.stderr:
+            m = _re.search(r"progress\s*=\s*(\d+)%", line)
+            if m:
+                prog_q.put(int(m.group(1)))
+        proc.wait()
+        if proc.returncode != 0:
+            result_q.put(("error", f"whisper.cpp 轉錄失敗（return code {proc.returncode}）"))
+            return
+        prog_q.put(100)
+
+        with open(out_json_base + ".json", encoding="utf-8") as f:
+            segs = json.load(f).get("transcription", [])
+
+        try:
+            import opencc
+            converter = opencc.OpenCC("s2twp")
+        except Exception:
+            converter = None
+
+        out_path = os.path.join(out_dir, f"{base}_transcript.txt")
+        srt_entries = []
+        with open(out_path, "w", encoding="utf-8") as f:
+            for seg in segs:
+                off = seg.get("offsets", {})
+                start = (off.get("from", 0) or 0) / 1000.0
+                end = (off.get("to", 0) or 0) / 1000.0
+                text = (seg.get("text") or "").strip()
+                if not text:
+                    continue
+                if converter:
+                    text = converter.convert(text)
+                text = _collapse_repeats(text)
+                ts = f"[{int(start)//60:02d}:{int(start)%60:02d} --> {int(end)//60:02d}:{int(end)%60:02d}]"
+                f.write(f"{ts} {text}\n")
+                srt_entries.append((start, end, text))
+
+        if write_srt:
+            srt_path = os.path.join(out_dir, f"{base}.srt")
+            with open(srt_path, "w", encoding="utf-8") as f:
+                for i, (s, e, text) in enumerate(srt_entries, 1):
+                    f.write(f"{i}\n{_format_srt_time(s)} --> {_format_srt_time(e)}\n{text}\n\n")
+            log_q.put(f"字幕已輸出：{os.path.basename(srt_path)}")
+
+        log_q.put("註：whisper.cpp 沒有說話人標記；可在第二步驟用 AI 校正依內容標出「哪一方」。")
+        for tmp_f in (wav, out_json_base + ".json"):
+            try:
+                os.remove(tmp_f)
+            except OSError:
+                pass
+        result_q.put(("done", out_path))
+    except Exception as e:
+        result_q.put(("error", str(e)))
 
 
 def _make_icon():
@@ -1097,6 +1586,60 @@ class SpeakerNameDialog(ctk.CTkToplevel):
         self.destroy()
 
     def _cancel(self):
+        self.destroy()
+
+
+class PartyContextDialog(ctk.CTkToplevel):
+    """按「自動標註說話方」前彈出，讓使用者補人名/情境。
+    result：None=取消；字串（可能空）=確定，當作標註用的情境。"""
+
+    def __init__(self, parent, prefill=""):
+        super().__init__(parent)
+        self.title("標註說話方 — 這場對話有誰？")
+        self.resizable(False, False)
+        self.configure(fg_color=BG)
+        self.grab_set()
+        self.result = None
+
+        ctk.CTkLabel(
+            self, justify="left", fg_color="transparent", text_color=TEXT,
+            font=ctk.CTkFont(FONT_UI, 15, weight="bold"),
+            text="告訴 AI 這場對話有誰、各代表哪一方",
+        ).pack(anchor="w", padx=22, pady=(20, 2))
+        ctk.CTkLabel(
+            self, justify="left", fg_color="transparent", text_color=SUBTEXT,
+            font=ctk.CTkFont(FONT_UI, 13), wraplength=480,
+            text="想看到實際人名，就在這裡寫清楚誰是誰；標出來就會用這些名稱。\n"
+                 "例如：我方＝我們公司、對方＝客戶；或：主講人＝王經理、提問者＝陳工程師。\n"
+                 "留空也可以，AI 會自己依內容判斷角色（例如「主管／部屬」）。",
+        ).pack(anchor="w", padx=22, pady=(0, 10))
+
+        self.box = ctk.CTkTextbox(
+            self, width=480, height=110, fg_color=SURFACE, text_color=TEXT,
+            border_color=BORDER, border_width=1, font=ctk.CTkFont(FONT_UI, 13),
+            wrap="word",
+        )
+        self.box.pack(padx=22)
+        if prefill:
+            self.box.insert("1.0", prefill)
+
+        btn = ctk.CTkFrame(self, fg_color="transparent")
+        btn.pack(pady=(14, 20), padx=22, fill="x")
+        ctk.CTkButton(btn, text="開始標註", command=self._ok,
+                      fg_color=GREEN, hover_color="#219A52", text_color="white",
+                      width=110, font=ctk.CTkFont(FONT_UI, 13)).pack(side="right", padx=(8, 0))
+        ctk.CTkButton(btn, text="取消", command=self._cancel,
+                      fg_color=SURFACE, hover_color=BORDER, text_color=TEXT,
+                      width=90, font=ctk.CTkFont(FONT_UI, 13)).pack(side="right")
+        self.transient(parent)
+        self.wait_window()
+
+    def _ok(self):
+        self.result = self.box.get("1.0", "end").strip()
+        self.destroy()
+
+    def _cancel(self):
+        self.result = None
         self.destroy()
 
 
@@ -1352,9 +1895,19 @@ class TranscribeApp:
         row_eng.pack(fill="x", padx=14, pady=(6, 2))
         ctk.CTkLabel(row_eng, text="辨識引擎", fg_color="transparent", text_color=SUBTEXT,
                      font=F(FONT_UI, 14)).pack(side="left", padx=(0, 6))
+        # 沒存過引擎（首次啟動）才自動偵測：MacBook Air / 8GB → 自動選 whisper.cpp
+        _saved_engine = self.cfg.get("stt_engine")
+        if not _saved_engine:
+            _saved_engine = _suggest_stt_engine()
+            save_config({"stt_engine": _saved_engine})
+            self.cfg["stt_engine"] = _saved_engine
+            # whisper.cpp 在 8GB 上跑 medium 也只吃 ~1.3GB 卻準很多，故預設 medium
+            # （whisper/whisperx 不在此設，維持依記憶體建議的 small）
+            if _saved_engine == "whispercpp" and not self.cfg.get("stt_model"):
+                save_config({"stt_model": "medium"})
+                self.cfg["stt_model"] = "medium"
         self.engine_var = tk.StringVar(
-            value=_STT_VAL2LABEL.get(self.cfg.get("stt_engine", "whisper"),
-                                     _STT_VAL2LABEL["whisper"]))
+            value=_STT_VAL2LABEL.get(_saved_engine, _STT_VAL2LABEL["whisper"]))
         ctk.CTkComboBox(row_eng, variable=self.engine_var,
                         values=[lb for _, lb in STT_ENGINES],
                         width=250, state="readonly",
@@ -1435,9 +1988,12 @@ class TranscribeApp:
             font=F(FONT_UI, 14, weight="bold"), width=150, height=48,
         ).pack()
         self.audio_display_var = tk.StringVar(value="未選擇")
-        ctk.CTkLabel(audio_col, textvariable=self.audio_display_var,
-                     fg_color="transparent", text_color=SUBTEXT,
-                     font=F(FONT_UI, 12), width=150, anchor="center").pack(pady=(4, 0))
+        self.audio_display_label = ctk.CTkLabel(
+            audio_col, textvariable=self.audio_display_var,
+            fg_color="transparent", text_color=SUBTEXT,
+            font=F(FONT_UI, 15, weight="bold"), width=200, wraplength=220,
+            justify="center", anchor="center")
+        self.audio_display_label.pack(pady=(6, 0))
 
         yt_col = ctk.CTkFrame(source, fg_color="transparent")
         yt_col.pack(side="left", padx=24, anchor="n")
@@ -1596,17 +2152,28 @@ class TranscribeApp:
         self.ai_model_var.trace_add("write", self._on_model_change)
         self._sync_model_widget(self.ai_engine_var.get())
 
-        # 補充說明（看完逐字稿後，把聽錯的廠商/產品/人名等補進來，校正與摘要會參考）
-        ctx_wrap = ctk.CTkFrame(tab_ai, fg_color="transparent")
-        ctx_wrap.pack(fill="x", anchor="w", pady=(12, 0))
+        # 第一步：載入逐字稿（左側大按鈕，使用者一眼知道從哪開始）＋ 描述情境（右側，窄而高）
+        top_row = ctk.CTkFrame(tab_ai, fg_color="transparent")
+        top_row.pack(fill="x", pady=(12, 0))
+        top_row.grid_columnconfigure(0, weight=0)
+        top_row.grid_columnconfigure(1, weight=1)
+        self.load_btn = ctk.CTkButton(
+            top_row, text="載入逐字稿", command=self.load_transcript,
+            fg_color=ACCENT, hover_color="#2980B9", text_color="white",
+            font=F(FONT_UI, 16, weight="bold"), width=160,
+        )
+        self.load_btn.grid(row=0, column=0, sticky="nsew", padx=(0, 14))
+
+        ctx_col = ctk.CTkFrame(top_row, fg_color="transparent")
+        ctx_col.grid(row=0, column=1, sticky="nsew")
         ctk.CTkLabel(
-            ctx_wrap,
+            ctx_col,
             text="描述這段錄音的情境，幫助 AI 校正名稱、辨識角色；例如：鴻海的 ERP 專案會議，與會者有工程師 Joe、Rachel 與專案經理 Sam。",
             fg_color="transparent", text_color=SUBTEXT, font=F(FONT_UI, 13),
-            justify="left", anchor="w",
+            justify="left", anchor="w", wraplength=540,
         ).pack(fill="x", anchor="w", pady=(0, 4))
         self.ai_context_box = ctk.CTkTextbox(
-            ctx_wrap, height=56, fg_color=SURFACE, text_color=TEXT,
+            ctx_col, height=92, fg_color=SURFACE, text_color=TEXT,
             border_color=BORDER, border_width=1, font=F(FONT_UI, 13),
             wrap="word",
         )
@@ -1614,21 +2181,32 @@ class TranscribeApp:
 
         # 後製按鈕
         post_outer = ctk.CTkFrame(tab_ai, fg_color="transparent")
-        post_outer.pack(pady=(10, 4))
+        post_outer.pack(fill="x", pady=(10, 4))
+
+        # 目前處理的檔案：第一步驟完成會自動帶過來，這個標示一定要大且清楚
+        self.loaded_file_var = tk.StringVar(value="尚未載入逐字稿")
+        self.loaded_file_label = ctk.CTkLabel(
+            post_outer, textvariable=self.loaded_file_var,
+            fg_color=SURFACE, corner_radius=8,
+            text_color=SUBTEXT, font=F(FONT_UI, 16, weight="bold"),
+        )
+        self.loaded_file_label.pack(fill="x", padx=20, pady=(10, 10), ipady=8)
+
+        # 第二排：四個處理動作（校正 → 標出說話方 → 摘要 → SRT）
         post_row = ctk.CTkFrame(post_outer, fg_color="transparent")
         post_row.pack()
-        self.load_btn = ctk.CTkButton(
-            post_row, text="載入逐字稿", command=self.load_transcript,
-            fg_color=SURFACE, hover_color=BORDER, text_color=TEXT,
-            font=F(FONT_UI, 14), width=130,
-        )
-        self.load_btn.pack(side="left", padx=8)
         self.correct_btn = ctk.CTkButton(
             post_row, text="校正逐字稿", command=self.correct_transcript,
             fg_color=BLUE_DIM, hover_color=BLUE, text_color=SUBTEXT,
             font=F(FONT_UI, 14), width=130, state="disabled",
         )
         self.correct_btn.pack(side="left", padx=8)
+        self.rename_spk_btn = ctk.CTkButton(
+            post_row, text="修正說話者", command=self.rename_speakers,
+            fg_color=BLUE_DIM, hover_color=BLUE, text_color=SUBTEXT,
+            font=F(FONT_UI, 14), width=120, state="disabled",
+        )
+        self.rename_spk_btn.pack(side="left", padx=8)
         self.notes_btn = ctk.CTkButton(
             post_row, text="產生摘要", command=self.generate_notes,
             fg_color=BLUE_DIM, hover_color=BLUE, text_color=SUBTEXT,
@@ -1641,10 +2219,6 @@ class TranscribeApp:
             font=F(FONT_UI, 14), width=110, state="disabled",
         )
         self.export_srt_btn.pack(side="left", padx=8)
-        self.loaded_file_var = tk.StringVar(value="")
-        ctk.CTkLabel(post_outer, textvariable=self.loaded_file_var,
-                     fg_color="transparent", text_color=ACCENT,
-                     font=F(FONT_UI, 12)).pack(pady=(4, 0))
 
         # ════════ 共用底部：計時 / 狀態 / 進度 / Log（兩個分頁都看得到）════════
         # 計時器 + 百分比
@@ -1811,7 +2385,8 @@ class TranscribeApp:
         self.yt_btn.configure(state="normal")
         if path and os.path.exists(path):
             self.audio_var.set(path)
-            self.audio_display_var.set(self._short_name(os.path.basename(path)))
+            self.audio_display_var.set(os.path.basename(path))
+            self.audio_display_label.configure(text_color=ACCENT)
             self.log_write(f"下載完成：{os.path.basename(path)}")
             self._set_status("下載完成，可開始轉錄", GREEN)
         else:
@@ -2001,7 +2576,8 @@ class TranscribeApp:
             ])
         if path:
             self.audio_var.set(path)
-            self.audio_display_var.set(self._short_name(os.path.basename(path)))
+            self.audio_display_var.set(os.path.basename(path))
+            self.audio_display_label.configure(text_color=ACCENT)
             ext = os.path.splitext(path)[1].lower()
             self.srt_var.set(ext in VIDEO_EXTS)
             if not self.out_var.get():
@@ -2107,7 +2683,7 @@ class TranscribeApp:
                     if dlg.result:
                         self._rename_speakers(data, dlg.result)
                 self.transcript_path = data
-                self.loaded_file_var.set(f"已載入：{os.path.basename(data)}")
+                self._set_loaded_file(data)
                 # 把第一步驟的「會議背景」自動帶進第二步驟的補充框（空才帶，不蓋掉手動輸入）
                 try:
                     if not self.ai_context_box.get("1.0", "end").strip():
@@ -2118,6 +2694,7 @@ class TranscribeApp:
                     pass
                 _open_file(data)
                 self.correct_btn.configure(state="normal", fg_color=BLUE, text_color="white")
+                self.rename_spk_btn.configure(state="normal", fg_color=BLUE, text_color="white")
                 self.notes_btn.configure(state="normal", fg_color=BLUE, text_color="white")
                 self.export_srt_btn.configure(state="normal", fg_color=BLUE, text_color="white")
                 # 轉錄完成自動帶使用者到下一步（AI 後製分頁）
@@ -2172,7 +2749,14 @@ class TranscribeApp:
             save_config({"hf_token": hf_token})
             num_speakers = self.speakers_var.get()
 
+        # whisper.cpp 需要外部的 whisper-cli；沒裝就跳教學引導（含可一鍵複製的安裝指令），不硬跑
+        if engine == "whispercpp" and not (shutil.which("whisper-cli") or shutil.which("whisper-cpp")):
+            self._show_whispercpp_guide()
+            self._set_status("尚未安裝 whisper.cpp，請依視窗指示安裝", RED)
+            return
+
         self.correct_btn.configure(state="disabled", fg_color=BLUE_DIM, text_color=SUBTEXT)
+        self.rename_spk_btn.configure(state="disabled", fg_color=BLUE_DIM, text_color=SUBTEXT)
         self.notes_btn.configure(state="disabled", fg_color=BLUE_DIM, text_color=SUBTEXT)
         self.transcript_path = None
         self.result_q = multiprocessing.Queue()
@@ -2184,6 +2768,12 @@ class TranscribeApp:
                 target=whisperx_worker,
                 args=(audio, out_dir, self.model_var.get(), lang,
                       hf_token, num_speakers, prompt, write_srt,
+                      self.result_q, self.log_q, self.prog_q),
+                daemon=True)
+        elif engine == "whispercpp":
+            self.process = multiprocessing.Process(
+                target=whispercpp_worker,
+                args=(audio, out_dir, self.model_var.get(), lang, prompt, write_srt,
                       self.result_q, self.log_q, self.prog_q),
                 daemon=True)
         else:
@@ -2231,13 +2821,15 @@ class TranscribeApp:
             return
         speakers = self._find_speakers(path)
         if speakers:
-            dlg = SpeakerNameDialog(self.root, speakers)
+            samples = self._speaker_samples(path, speakers)
+            dlg = SpeakerNameDialog(self.root, speakers, samples)
             if dlg.result:
                 self._rename_speakers(path, dlg.result)
         self.transcript_path = path
         fname = os.path.basename(path)
-        self.loaded_file_var.set(f"已載入：{fname}")
+        self._set_loaded_file(path)
         self.correct_btn.configure(state="normal", fg_color=BLUE, text_color="white")
+        self.rename_spk_btn.configure(state="normal", fg_color=BLUE, text_color="white")
         self.notes_btn.configure(state="normal", fg_color=BLUE, text_color="white")
         self.export_srt_btn.configure(state="normal", fg_color=BLUE, text_color="white")
         self.log_write(f"已載入逐字稿：{fname}")
@@ -2294,6 +2886,119 @@ class TranscribeApp:
         with open(path, "w", encoding="utf-8") as f:
             f.write(content)
 
+    def _find_party_labels(self, path):
+        """找 AI 標註的「〔方別〕」標籤（如 主管／部屬），排除〔不確定〕。"""
+        with open(path, "r", encoding="utf-8") as f:
+            content = f.read()
+        labels = []
+        for m in re.findall(r"〔([^〕]+)〕", content):
+            if m not in labels and m != "不確定":
+                labels.append(m)
+        return labels
+
+    def _party_samples(self, path, labels, max_len=90):
+        """為每個方別抓一句最長的代表發言當提示。"""
+        best = {lb: "" for lb in labels}
+        with open(path, "r", encoding="utf-8") as f:
+            for line in f:
+                m = re.match(r"^〔([^〕]+)〕", line.strip())
+                if not m or m.group(1) not in best:
+                    continue
+                text = re.sub(r"^〔[^〕]+〕\s*\[\d{1,2}:\d{2} --> \d{1,2}:\d{2}\]\s*", "", line.strip()).strip()
+                if len(text) > len(best[m.group(1)]):
+                    best[m.group(1)] = text
+        return {lb: (t[:max_len] + "…") if len(t) > max_len else t for lb, t in best.items()}
+
+    def _rename_party_labels(self, path, name_map):
+        """把〔舊名〕整批換成〔新名〕（只動方括號內，不碰內文裡的同字）。"""
+        with open(path, "r", encoding="utf-8") as f:
+            content = f.read()
+        for old, new in name_map.items():
+            if old != new:
+                content = content.replace(f"〔{old}〕", f"〔{new}〕")
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(content)
+
+    # 「HH:MM:SS 講者」表頭格式（Plaud、以及已移除的舊雲端辨識都是這種）
+    _TIMED_HDR = re.compile(r"^(\d{1,2}:\d{2}:\d{2})\s+(.+?)\s*$")
+
+    def _find_timed_speakers(self, path):
+        """找『時間戳 講者』表頭裡的講者標籤（如 Speaker 1、Speaker 2）。"""
+        labels = []
+        with open(path, "r", encoding="utf-8") as f:
+            for line in f:
+                m = self._TIMED_HDR.match(line.rstrip("\n"))
+                if m:
+                    lb = m.group(2).strip()
+                    if lb and len(lb) <= 20 and lb not in labels:
+                        labels.append(lb)
+        return labels
+
+    def _timed_speaker_samples(self, path, labels, max_len=90):
+        best = {lb: "" for lb in labels}
+        current = None
+        with open(path, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.rstrip("\n")
+                m = self._TIMED_HDR.match(line)
+                if m and m.group(2).strip() in best:
+                    current = m.group(2).strip()
+                    continue
+                if current in best:
+                    t = line.strip()
+                    if len(t) > len(best[current]):
+                        best[current] = t
+        return {lb: (t[:max_len] + "…") if len(t) > max_len else t for lb, t in best.items()}
+
+    def _rename_timed_speakers(self, path, name_map):
+        """只改表頭行的講者名（行內文字不動）。"""
+        out = []
+        with open(path, "r", encoding="utf-8") as f:
+            for line in f:
+                m = self._TIMED_HDR.match(line.rstrip("\n"))
+                if m and m.group(2).strip() in name_map and name_map[m.group(2).strip()] != m.group(2).strip():
+                    out.append(f"{m.group(1)} {name_map[m.group(2).strip()]}\n")
+                else:
+                    out.append(line)
+        with open(path, "w", encoding="utf-8") as f:
+            f.writelines(out)
+
+    def rename_speakers(self):
+        """事後修正說話者/說話方名稱：支援 WhisperX 的 SPEAKER_xx、AI 標的〔方別〕、
+        以及 Plaud／舊雲端的『HH:MM:SS 講者』表頭格式。"""
+        if not self.transcript_path:
+            return
+        path = self.transcript_path
+        spk = self._find_speakers(path)
+        if spk:
+            dlg = SpeakerNameDialog(self.root, spk, self._speaker_samples(path, spk))
+            if dlg.result:
+                self._rename_speakers(path, dlg.result)
+                self.log_write("已更新說話者名稱")
+                self._set_status("已更新說話者名稱！", GREEN)
+                _open_file(path)
+            return
+        labels = self._find_party_labels(path)
+        if labels:
+            dlg = SpeakerNameDialog(self.root, labels, self._party_samples(path, labels))
+            if dlg.result:
+                self._rename_party_labels(path, dlg.result)
+                self.log_write("已更新說話方名稱")
+                self._set_status("已更新說話方名稱！", GREEN)
+                _open_file(path)
+            return
+        timed = self._find_timed_speakers(path)
+        if timed:
+            dlg = SpeakerNameDialog(self.root, timed, self._timed_speaker_samples(path, timed))
+            if dlg.result:
+                self._rename_timed_speakers(path, dlg.result)
+                self.log_write("已更新說話者名稱")
+                self._set_status("已更新說話者名稱！", GREEN)
+                _open_file(path)
+            return
+        self.log_write("這份逐字稿沒有可重新命名的說話人／說話方標籤")
+        self._set_status("沒有可重新命名的標籤", SUBTEXT)
+
     # ── AI operations ──────────────────────────────
     def _ai_context(self):
         """AI 校正/摘要用的情境：合併第一步驟的關鍵術語＋會議背景，與第二步驟的補充說明。
@@ -2324,6 +3029,19 @@ class TranscribeApp:
         if not api_key and ai_engine not in ("ollama", "lmstudio"):
             self.log_write(f"請輸入 {_ENGINE_DISPLAY.get(ai_engine, ai_engine)} API Key")
             return
+        # 稿子已有任何說話人標記（WhisperX SPEAKER_xx／AI〔方別〕／Plaud 的 HH:MM:SS 講者）
+        # → 只校正；完全沒有（whisper/whisper.cpp 原稿）→ 同一次 API 順手標方
+        p = self.transcript_path
+        do_label = not (self._find_speakers(p) or self._find_party_labels(p) or self._find_timed_speakers(p))
+        context = self._ai_context()
+        if do_label:
+            # 要標方時先問「誰是誰」：預填現有情境，可補人名；取消就不跑
+            dlg = PartyContextDialog(self.root, prefill=context)
+            if dlg.result is None:
+                return
+            context = dlg.result
+        self._correct_did_label = do_label
+
         base = self.transcript_path.rsplit("_transcript", 1)[0]
         out_path = self._resolve_output_path(base + "_transcript_corrected.txt")
         cfg_key = _ENGINE_CFG_KEY[ai_engine]
@@ -2334,13 +3052,15 @@ class TranscribeApp:
         self.correct_btn.configure(state="disabled", fg_color=BLUE_DIM, text_color=SUBTEXT)
         self.notes_btn.configure(state="disabled", fg_color=BLUE_DIM, text_color=SUBTEXT)
         self.stop_btn.configure(state="normal")
-        self.log_write(f"正在校正逐字稿（{_ENGINE_DISPLAY.get(ai_engine, ai_engine)}）...")
-        self._set_status("校正中...", ACCENT)
+        action = "校正並標註說話方" if do_label else "校正逐字稿"
+        self.log_write(f"正在{action}（{_ENGINE_DISPLAY.get(ai_engine, ai_engine)}）...")
+        self._set_status(f"{action}中...", ACCENT)
         self._start_ai_progress()
 
         def run():
             try:
-                result = correct_transcript(self.transcript_path, ai_engine, api_key, out_path, context=self._ai_context())
+                result = correct_transcript(self.transcript_path, ai_engine, api_key, out_path,
+                                            context=context, label_parties=do_label)
                 self.root.after(0, lambda: self._correct_done(result))
             except Exception as e:
                 err = str(e)
@@ -2352,13 +3072,14 @@ class TranscribeApp:
         self._stop_ai_progress(success=not self.ai_cancelled)
         self._reset_ai_buttons()
         if self.ai_cancelled:
-            self.log_write("校正已取消")
+            self.log_write("已取消")
             self._set_status("已取消", SUBTEXT)
             return
         self.transcript_path = out_path
-        self.loaded_file_var.set(f"已載入：{os.path.basename(out_path)}")
-        self.log_write(f"校正完成：{os.path.basename(out_path)}")
-        self._set_status("校正完成！已自動開啟，可繼續點選「產生摘要」", GREEN)
+        self._set_loaded_file(out_path)
+        action = "校正＋標註說話方" if getattr(self, "_correct_did_label", False) else "校正"
+        self.log_write(f"{action}完成：{os.path.basename(out_path)}")
+        self._set_status(f"{action}完成！已自動開啟，可繼續點選「產生摘要」", GREEN)
         _open_file(out_path)
 
     def _correct_error(self, err):
@@ -2366,6 +3087,73 @@ class TranscribeApp:
         self._reset_ai_buttons()
         self.log_write(f"校正錯誤：{err}")
         self._set_status("校正失敗", RED)
+
+    def _set_loaded_file(self, path):
+        """更新「目前處理檔案」醒目標示。"""
+        self.loaded_file_var.set(f"目前處理：{os.path.basename(path)}")
+        try:
+            self.loaded_file_label.configure(text_color=ACCENT)
+        except Exception:
+            pass
+
+    def _show_whispercpp_guide(self):
+        """選了 whisper.cpp 但沒裝 whisper-cli 時，跳教學引導（含可一鍵複製的安裝指令）。"""
+        is_mac = sys.platform == "darwin"
+        cmd = "brew install whisper-cpp"
+        win = ctk.CTkToplevel(self.root)
+        win.title("要用 whisper.cpp，需要先安裝一次")
+        win.configure(fg_color=BG)
+        win.resizable(False, False)
+        win.grab_set()
+        ctk.CTkLabel(
+            win, justify="left", fg_color="transparent", text_color=TEXT,
+            font=ctk.CTkFont(FONT_UI, 15, weight="bold"),
+            text="「whisper.cpp」是給 MacBook Air 等較輕薄機器用的辨識引擎",
+        ).pack(anchor="w", padx=22, pady=(20, 2))
+        ctk.CTkLabel(
+            win, justify="left", fg_color="transparent", text_color=SUBTEXT,
+            font=ctk.CTkFont(FONT_UI, 13), wraplength=460,
+            text="第一次使用前需要安裝一次（之後就不用再裝）。轉錄用的模型會在第一次轉錄時自動下載，不用手動處理。",
+        ).pack(anchor="w", padx=22, pady=(0, 12))
+
+        if is_mac:
+            ctk.CTkLabel(
+                win, justify="left", fg_color="transparent", text_color=TEXT,
+                font=ctk.CTkFont(FONT_UI, 13),
+                text="① 打開「終端機」　② 貼上並執行下面這行：",
+            ).pack(anchor="w", padx=22, pady=(0, 6))
+            box = ctk.CTkFrame(win, fg_color=SURFACE, corner_radius=8)
+            box.pack(fill="x", padx=22)
+            ctk.CTkLabel(box, text=cmd, fg_color="transparent", text_color=ACCENT,
+                         font=ctk.CTkFont("Menlo", 14, weight="bold"),
+                         anchor="w").pack(side="left", padx=12, pady=10)
+
+            def _copy():
+                self.root.clipboard_clear()
+                self.root.clipboard_append(cmd)
+                copy_btn.configure(text="已複製 ✓")
+
+            copy_btn = ctk.CTkButton(box, text="複製指令", width=92, command=_copy,
+                                     fg_color=ACCENT, hover_color="#2980B9", text_color="white",
+                                     font=ctk.CTkFont(FONT_UI, 13))
+            copy_btn.pack(side="right", padx=8, pady=7)
+            ctk.CTkLabel(
+                win, justify="left", fg_color="transparent", text_color=SUBTEXT,
+                font=ctk.CTkFont(FONT_UI, 12), wraplength=460,
+                text="③ 裝完回到 VoxLog，再按一次「開始轉錄」即可。",
+            ).pack(anchor="w", padx=22, pady=(10, 4))
+        else:
+            ctk.CTkLabel(
+                win, justify="left", fg_color="transparent", text_color=SUBTEXT,
+                font=ctk.CTkFont(FONT_UI, 13), wraplength=460,
+                text="Windows 建議改用「地端 WhisperX」引擎（有 GPU 時更快）；"
+                     "若仍要用 whisper.cpp，請依官方說明安裝後把 whisper-cli 加入系統 PATH。",
+            ).pack(anchor="w", padx=22, pady=(0, 8))
+
+        ctk.CTkButton(win, text="知道了", width=110, command=win.destroy,
+                      fg_color=GREEN, hover_color="#219A52", text_color="white",
+                      font=ctk.CTkFont(FONT_UI, 13)).pack(pady=(10, 20))
+        win.transient(self.root)
 
     def generate_notes(self):
         if not self.transcript_path:
@@ -2491,6 +3279,7 @@ class TranscribeApp:
     def _reset_ai_buttons(self):
         self.stop_btn.configure(state="disabled")
         self.correct_btn.configure(state="normal", fg_color=BLUE, text_color="white")
+        self.rename_spk_btn.configure(state="normal", fg_color=BLUE, text_color="white")
         self.notes_btn.configure(state="normal", fg_color=BLUE, text_color="white")
         self.export_srt_btn.configure(state="normal", fg_color=BLUE, text_color="white")
 

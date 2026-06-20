@@ -194,10 +194,13 @@ eval "$(/opt/homebrew/bin/brew shellenv)"</pre>
 
   <!-- 2 -->
   <h2 id="s2"><span class="num">2</span>裝 Python 與 FFmpeg</h2>
-  <p>一行指令裝齊三樣東西:正確版本的 Python、它的圖形介面元件、以及處理音訊的 FFmpeg。</p>
+  <p>一行指令裝齊四樣東西:正確版本的 Python、它的圖形介面元件、處理音訊的 FFmpeg,以及輕量辨識引擎 whisper.cpp。</p>
   <div class="code">
     <button class="copy">複製</button>
-    <pre>brew install python@3.11 python-tk@3.11 ffmpeg</pre>
+    <pre>brew install python@3.11 python-tk@3.11 ffmpeg whisper-cpp</pre>
+  </div>
+  <div class="note tip">
+    <span class="ic">💡 whisper.cpp 是給 MacBook Air 用的</span>MacBook Air / 8GB 記憶體的機器,VoxLog 第一次開啟會自動把辨識引擎選成「whisper.cpp」(輕、不吃記憶體)。所以這台一定要裝好它(已包含在上面那行)。辨識模型會在第一次轉錄時自動下載,不用手動處理。
   </div>
   <div class="note warn">
     <span class="ic">❗ 為什麼指定 3.11?</span>Mac 系統內建的 Python 是舊版,直接拿來跑 VoxLog 的圖形介面<strong>會一開就閃退</strong>。所以一定要用 Homebrew 這個 <code>python@3.11</code>,後面建環境時也要用它。
