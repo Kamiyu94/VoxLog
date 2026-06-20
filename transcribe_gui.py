@@ -1316,6 +1316,25 @@ _WHISPERCPP_MODELS = {
 _WHISPERCPP_BASE_URL = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/"
 
 
+def _resolve_whispercpp_binary():
+    """找 whisper-cli。優先用 repo 內附帶的 binary（Windows 同事 git pull 即可用、免裝免設 PATH），
+    找不到才退回系統 PATH。回傳路徑字串，或 None。"""
+    here = os.path.dirname(os.path.abspath(__file__))
+    if platform.system() == "Windows":
+        bundled = [os.path.join(here, "bin", "whispercpp-win", "whisper-cli.exe"),
+                   os.path.join(here, "bin", "whispercpp-win", "main.exe")]
+    else:
+        bundled = [os.path.join(here, "bin", "whispercpp-mac", "whisper-cli")]
+    for b in bundled:
+        if os.path.exists(b):
+            # 把 binary 所在資料夾加進 PATH，確保它旁邊的 dll/dylib 找得到
+            d = os.path.dirname(b)
+            if d not in os.environ.get("PATH", ""):
+                os.environ["PATH"] = d + os.pathsep + os.environ.get("PATH", "")
+            return b
+    return shutil.which("whisper-cli") or shutil.which("whisper-cpp")
+
+
 def _ensure_whispercpp_model(size, models_dir, log_q):
     """確保 ggml 模型檔存在，不存在則自動下載。回傳模型路徑。"""
     import urllib.request
@@ -1338,11 +1357,11 @@ def whispercpp_worker(audio, out_dir, model_name, lang, prompt, write_srt, resul
         if platform.system() == "Windows":
             os.environ["PATH"] += ";" + r"C:\Users\kamiy\AppData\Local\Microsoft\WinGet\Packages\Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe\ffmpeg-8.1.1-full_build\bin"
 
-        binary = shutil.which("whisper-cli") or shutil.which("whisper-cpp")
+        binary = _resolve_whispercpp_binary()
         if not binary:
             result_q.put(("error",
                 "找不到 whisper-cli。\nMac 請在終端機執行：brew install whisper-cpp\n"
-                "Windows 請安裝 whisper.cpp 並將其加入系統 PATH。"))
+                "Windows 請安裝 whisper.cpp 並將其加入系統 PATH（或放進 bin/whispercpp-win/）。"))
             return
 
         models_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "models")
@@ -2750,7 +2769,7 @@ class TranscribeApp:
             num_speakers = self.speakers_var.get()
 
         # whisper.cpp 需要外部的 whisper-cli；沒裝就跳教學引導（含可一鍵複製的安裝指令），不硬跑
-        if engine == "whispercpp" and not (shutil.which("whisper-cli") or shutil.which("whisper-cpp")):
+        if engine == "whispercpp" and not _resolve_whispercpp_binary():
             self._show_whispercpp_guide()
             self._set_status("尚未安裝 whisper.cpp，請依視窗指示安裝", RED)
             return
