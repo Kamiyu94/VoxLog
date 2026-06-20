@@ -184,16 +184,27 @@ VoxLog 是一個具備圖形化介面 (GUI) 的語音轉文字與 AI 輔助處�
    ```
    *(註：若您已有其他 FFmpeg 環境，請確保它已加入系統的環境變數 PATH 中)*
 
-3. **安裝 Python 依賴套件並執行**
-   ```cmd
-   # 建立並啟動虛擬環境
+3. **建立虛擬環境**
+   ```powershell
    python -m venv venv
    venv\Scripts\activate
-   
-   # 安裝套件
-   pip install -r requirements.txt
-   
-   # 啟動主程式
+   ```
+   > 💡 若 `activate` 報「無法載入...因為系統上已停用指令碼執行」，先跑一次
+   > `Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned`（按 Y），再重試。
+
+4. **安裝套件（二選一）**
+   - 🪶 **輕量版（沒有獨立顯卡、或只想用 whisper.cpp）**：whisper.cpp 引擎的執行檔**已內建在專案裡**（`bin\whispercpp-win\`），所以這條完全免裝 whisper.cpp、也不裝 torch：
+     ```powershell
+     pip install -r requirements-lite.txt
+     ```
+   - 🧰 **完整版（有 NVIDIA 顯卡、想用 WhisperX 聲紋分人）**：
+     ```powershell
+     pip install -r requirements.txt
+     ```
+     （有顯卡再依下方「GPU 加速」裝 CUDA 版 torch。）
+
+5. **啟動**
+   ```powershell
    python transcribe_gui.py
    ```
 

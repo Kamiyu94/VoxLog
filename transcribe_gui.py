@@ -3165,8 +3165,8 @@ class TranscribeApp:
             ctk.CTkLabel(
                 win, justify="left", fg_color="transparent", text_color=SUBTEXT,
                 font=ctk.CTkFont(FONT_UI, 13), wraplength=460,
-                text="Windows 建議改用「地端 WhisperX」引擎（有 GPU 時更快）；"
-                     "若仍要用 whisper.cpp，請依官方說明安裝後把 whisper-cli 加入系統 PATH。",
+                text="Windows 版的 whisper.cpp 執行檔原本已內建在專案的 bin\\whispercpp-win\\ 裡，"
+                     "正常不會看到這個訊息。若出現，多半是檔案不齊，請重新執行一次 git pull（或重新下載專案）。",
             ).pack(anchor="w", padx=22, pady=(0, 8))
 
         ctk.CTkButton(win, text="知道了", width=110, command=win.destroy,

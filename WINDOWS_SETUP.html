@@ -181,6 +181,16 @@
   <div class="note tip">
     <span class="ic">💡</span>萬一第一次轉錄時說「找不到 ffmpeg」,把視窗關掉、<strong>再雙擊一次 VoxLog.bat</strong> 就好(剛裝的 FFmpeg 需要重開才生效)。
   </div>
+  <div class="note tip">
+    <span class="ic">🎙️ whisper.cpp 引擎已內建,免安裝</span>輕量的 whisper.cpp 辨識引擎(適合較舊/沒有獨立顯卡的電腦)<strong>已經包在專案裡</strong>(<code>bin\whispercpp-win\</code>),不需要另外下載或設定,選了就能用。辨識模型會在第一次轉錄時自動下載。
+  </div>
+  <div class="note tip">
+    <span class="ic">🪶 電腦較舊、沒有 NVIDIA 顯卡?</span>可改用<strong>輕量安裝</strong>(只用 whisper.cpp、不裝約 2GB 的 torch):開 PowerShell 到 VoxLog 資料夾,跑
+    <code>python -m venv venv</code> →
+    <code>venv\Scripts\activate</code> →
+    <code>pip install -r requirements-lite.txt</code> → <code>python transcribe_gui.py</code>。
+    (若 <code>activate</code> 被擋,先跑 <code>Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned</code> 按 Y。)
+  </div>
 
   <!-- 4 -->
   <h2 id="s4"><span class="num">4</span>建一個桌面捷徑(方便每天用)</h2>
