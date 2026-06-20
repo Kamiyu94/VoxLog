@@ -81,13 +81,28 @@ VoxLog 是一個具備圖形化介面 (GUI) 的語音轉文字與 AI 輔助處�
    rm -rf venv
    /opt/homebrew/bin/python3.11 -m venv venv
    source venv/bin/activate
+   ```
 
-   pip install -r requirements.txt
+   接著**二選一**安裝套件：
 
-   # 啟動主程式
+   - 🪶 **輕量版（MacBook Air／8GB 記憶體推薦）** — 只裝 whisper.cpp 路線需要的東西，
+     **不裝 torch 那一整坨**，省幾 GB，而且**下面的疑難排解 ②③ 完全不會遇到**：
+     ```bash
+     pip install -r requirements-lite.txt
+     ```
+     （只能用 whisper.cpp 引擎；模型第一次轉錄時自動下載。）
+
+   - 🧰 **完整版（需要 WhisperX 聲紋說話人分離，或有 NVIDIA GPU）**：
+     ```bash
+     pip install -r requirements.txt
+     ```
+     （含 torch / WhisperX / pyannote；macOS 上可能會遇到下方疑難排解 ②③④。）
+
+   ```bash
+   # 啟動主程式（兩種裝法都一樣）
    python transcribe_gui.py
    ```
-   *(若 `python3.11 -m venv` 失敗、或語者分離不能用，請看下方疑難排解 ② ③)*
+   *(若用完整版且 `python3.11 -m venv` 失敗、或語者分離不能用，請看下方疑難排解 ② ③；輕量版不受影響。)*
 
 ---
 

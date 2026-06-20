@@ -231,18 +231,26 @@ eval "$(/opt/homebrew/bin/brew shellenv)"</pre>
   </div>
   <p class="muted">(上面複製到的是 <code>cd</code> 加空格;貼上後拖資料夾進來再按 Enter。)</p>
 
-  <p style="margin-top:18px;">進到資料夾後,把<strong>這一整段</strong>複製、貼上、按 Enter。它會建立獨立環境、下載所有需要的套件、<strong>設定好 <code>voxlog</code> 快速啟動指令</strong>、然後打開 VoxLog:</p>
+  <p style="margin-top:18px;">進到資料夾後,把<strong>這一整段</strong>複製、貼上、按 Enter。它會建立獨立環境、裝好套件、<strong>設定好 <code>voxlog</code> 快速啟動指令</strong>、然後打開 VoxLog。<strong>MacBook Air／一般筆電用這個輕量版就好</strong>(輕、快、不會踩到下面的疑難排解):</p>
   <div class="code">
     <button class="copy">複製</button>
     <pre>/opt/homebrew/bin/python3.11 -m venv venv
 source venv/bin/activate
-pip install -r requirements.txt
+pip install -r requirements-lite.txt
 chmod +x voxlog
 ln -sf "$PWD/voxlog" /opt/homebrew/bin/voxlog
 python transcribe_gui.py</pre>
   </div>
+  <div class="note tip">
+    <span class="ic">🪶 為什麼用輕量版</span>它只裝「whisper.cpp 辨識 + 雲端 AI」需要的東西,<strong>不裝 torch 那幾 GB</strong>,所以又小又快,也避開下面 ②③ 的安裝坑。辨識引擎 VoxLog 第一次開會自動幫 MacBook Air 選成 whisper.cpp,模型在第一次轉錄時自動下載。<br>(只想用這個的話,下面「裝 whisper.cpp 引擎」那步也別忘了:<code>brew install whisper-cpp</code>,已包含在第 2 步。)
+  </div>
   <div class="note warn">
-    <span class="ic">⏳ 第一次會很久</span>它要下載 <strong>約 2GB</strong> 的 AI 語音模型套件,網路要穩、<strong>請耐心等(可能 10 分鐘以上)</strong>。畫面停著在跑文字<strong>不是當機</strong>,是在下載,中途別關。
+    <span class="ic">🧰 需要「聲紋說話人分離(WhisperX)」或有 NVIDIA 顯卡?</span>才改用完整版(會多下載 <strong>約 2GB</strong> 的 torch,且 macOS 上可能要處理下面 ②③④):
+    <div class="code" style="margin-top:10px;">
+      <button class="copy">複製</button>
+      <pre>pip install -r requirements.txt</pre>
+    </div>
+    第一次很久很正常,畫面在跑文字<strong>不是當機</strong>,中途別關。
   </div>
   <div class="note tip">
     <span class="ic">⭐ 以後開 VoxLog 超簡單</span>上面那段已經幫你設好 <code>voxlog</code> 指令了。以後<strong>在任何地方</strong>打開終端機,只要打一個字:
@@ -322,13 +330,13 @@ git branch -M main</pre>
     <button class="copy">複製</button>
     <pre>git pull</pre>
   </div>
-  <p class="muted">接著啟用環境、補裝可能新增的套件(這步很快,沒新套件也不會有壞處):</p>
+  <p class="muted">接著啟用環境、補裝可能新增的套件(這步很快,沒新套件也不會有壞處)。<strong>當初用哪個版本裝的,就用哪個</strong>:</p>
   <div class="code">
     <button class="copy">複製</button>
     <pre>source venv/bin/activate
-pip install -r requirements.txt</pre>
+pip install -r requirements-lite.txt   # 輕量版(MacBook Air)</pre>
   </div>
-  <p class="muted">更新完打 <code>voxlog</code> 重開 App 即可。</p>
+  <p class="muted" style="margin-top:6px;">完整版的人改用 <code>pip install -r requirements.txt</code>。更新完打 <code>voxlog</code> 重開 App 即可。</p>
 
   <div class="note tip">
     <span class="ic">✨ 這次更新有什麼新東西?</span>

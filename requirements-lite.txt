@@ -1,0 +1,27 @@
+# VoxLog 輕量安裝（whisper.cpp 路線，適合 MacBook Air / 8GB）
+#
+# 只裝「whisper.cpp 辨識 + 雲端 AI 校正/摘要 + GUI」需要的套件，
+# 刻意「不裝」torch / openai-whisper / whisperx / pyannote 那一整坨重量級依賴
+# （省幾 GB 空間，也避開 macOS 上 torchcodec / ffmpeg@7 / pyexpat 的安裝地獄）。
+#
+# 代價：這份裝完「只能用 whisper.cpp 引擎」，不能用地端 Whisper / WhisperX。
+# 需要 WhisperX（聲紋說話人分離）的人，請改用完整版 requirements.txt。
+#
+# 安裝（macOS）：
+#   brew install python@3.11 python-tk@3.11 ffmpeg whisper-cpp
+#   /opt/homebrew/bin/python3.11 -m venv venv
+#   source venv/bin/activate
+#   pip install -r requirements-lite.txt
+#   python transcribe_gui.py
+# 第一次用 whisper.cpp 轉錄時，辨識模型（medium）會自動下載，不用手動處理。
+
+customtkinter
+pillow
+requests
+opencc-python-reimplemented
+yt-dlp
+anthropic
+google-genai
+openai
+python-docx
+pyobjc-framework-Cocoa; sys_platform == "darwin"
