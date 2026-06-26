@@ -340,6 +340,7 @@ STT_ENGINES = [
     ("whisper",      "地端 Whisper"),
     ("whisperx",     "地端 WhisperX（含說話人辨識）"),
     ("whispercpp",   "地端 whisper.cpp（MacBook Air）"),
+    ("whispercpp_diar", "地端 whisper.cpp ＋ 聲學分軌（whisperX，需 HF Token）"),
 ]
 _STT_LABEL2VAL = {lb: v for v, lb in STT_ENGINES}
 _STT_VAL2LABEL = {v: lb for v, lb in STT_ENGINES}
@@ -1122,7 +1123,31 @@ def _run_whisperx_chunked(model, audio, out_dir, lang, hf_token, num_speakers,
                      result_q=result_q, log_q=log_q)
 
 
-def whisper_worker(audio, out_dir, model_name, lang, prompt, write_srt, result_q, log_q, prog_q):
+def _safe_open_transcript(out_path, log_q):
+    """寫逐字稿前統一處理：先刪同名舊檔再建新檔（macOS 上「刪舊+建新」TCC 允許，
+    可避開「原地截斷覆寫」在 Downloads/Desktop/Documents 被擋的 EPERM；也讓 Finder
+    依現在日期排序）。主路徑被系統擋下時 fallback 到 ~/VoxLog。回傳 (file_obj, 實際路徑)。"""
+    import os
+    candidates = [out_path]
+    fb_path = os.path.join(os.path.expanduser("~"), "VoxLog", os.path.basename(out_path))
+    if os.path.abspath(fb_path) != os.path.abspath(out_path):
+        candidates.append(fb_path)
+    last_err = None
+    for cand in candidates:
+        try:
+            os.makedirs(os.path.dirname(cand), exist_ok=True)
+            if os.path.exists(cand):
+                os.remove(cand)
+            f = open(cand, "w", encoding="utf-8")
+            if cand != out_path:
+                log_q.put(f"⚠ 「{os.path.dirname(out_path)}」寫入被系統擋下（隱私保護），已改存到：{cand}")
+            return f, cand
+        except (PermissionError, OSError) as e:
+            last_err = e
+    raise last_err
+
+
+def whisper_worker(audio, out_dir, model_name, lang, prompt, write_srt, result_q, log_q, prog_q, out_path_override=None):
     try:
         import whisper, torch, os, sys, platform
         if platform.system() == "Windows":
@@ -1161,10 +1186,9 @@ def whisper_worker(audio, out_dir, model_name, lang, prompt, write_srt, result_q
         prog_q.put(100)
 
         base = os.path.splitext(os.path.basename(audio))[0]
-        out_path = os.path.join(out_dir, f"{base}_transcript.txt")
-        if os.path.exists(out_path):
-            os.remove(out_path)  # 砍掉舊同名檔再寫，讓建立/加入日期=現在（否則 Finder 依加入日期排序會排回舊日期）
-        with open(out_path, "w", encoding="utf-8") as f:
+        out_path = out_path_override or os.path.join(out_dir, f"{base}_transcript.txt")
+        f, out_path = _safe_open_transcript(out_path, log_q)
+        with f:
             for seg in result["segments"]:
                 start = int(seg["start"])
                 end = int(seg["end"])
@@ -1194,7 +1218,7 @@ def whisper_worker(audio, out_dir, model_name, lang, prompt, write_srt, result_q
         result_q.put(("error", str(e)))
 
 
-def whisperx_worker(audio, out_dir, model_name, lang, hf_token, num_speakers, prompt, write_srt, result_q, log_q, prog_q):
+def whisperx_worker(audio, out_dir, model_name, lang, hf_token, num_speakers, prompt, write_srt, result_q, log_q, prog_q, out_path_override=None):
     try:
         import whisperx, torch, os, platform
         if platform.system() == "Windows":
@@ -1263,9 +1287,10 @@ def whisperx_worker(audio, out_dir, model_name, lang, hf_token, num_speakers, pr
             converter = None
 
         base = os.path.splitext(os.path.basename(audio))[0]
-        out_path = os.path.join(out_dir, f"{base}_transcript.txt")
+        out_path = out_path_override or os.path.join(out_dir, f"{base}_transcript.txt")
         segments_for_srt = []
-        with open(out_path, "w", encoding="utf-8") as f:
+        f, out_path = _safe_open_transcript(out_path, log_q)
+        with f:
             current_speaker = None
             for seg in result["segments"]:
                 start = seg.get("start", 0)
@@ -1362,7 +1387,7 @@ def _ensure_whispercpp_model(size, models_dir, log_q):
     return path
 
 
-def whispercpp_worker(audio, out_dir, model_name, lang, prompt, write_srt, result_q, log_q, prog_q):
+def whispercpp_worker(audio, out_dir, model_name, lang, prompt, write_srt, result_q, log_q, prog_q, out_path_override=None):
     import subprocess, shutil, json, tempfile, platform, re as _re
     try:
         if platform.system() == "Windows":
@@ -1412,9 +1437,10 @@ def whispercpp_worker(audio, out_dir, model_name, lang, prompt, write_srt, resul
         except Exception:
             converter = None
 
-        out_path = os.path.join(out_dir, f"{base}_transcript.txt")
+        out_path = out_path_override or os.path.join(out_dir, f"{base}_transcript.txt")
         srt_entries = []
-        with open(out_path, "w", encoding="utf-8") as f:
+        f, out_path = _safe_open_transcript(out_path, log_q)
+        with f:
             for seg in segs:
                 off = seg.get("offsets", {})
                 start = (off.get("from", 0) or 0) / 1000.0
@@ -1437,6 +1463,144 @@ def whispercpp_worker(audio, out_dir, model_name, lang, prompt, write_srt, resul
             log_q.put(f"字幕已輸出：{os.path.basename(srt_path)}")
 
         log_q.put("註：whisper.cpp 沒有說話人標記；可在第二步驟用 AI 校正依內容標出「哪一方」。")
+        for tmp_f in (wav, out_json_base + ".json"):
+            try:
+                os.remove(tmp_f)
+            except OSError:
+                pass
+        result_q.put(("done", out_path))
+    except Exception as e:
+        result_q.put(("error", str(e)))
+
+
+def whispercpp_diar_worker(audio, out_dir, model_name, lang, hf_token, num_speakers, prompt, write_srt, result_q, log_q, prog_q, out_path_override=None):
+    """混搭引擎：① whisper.cpp（Metal，快）負責轉錄 → ② whisperX align + pyannote 分軌
+    負責說話者。接續執行（非平行），峰值負載=較重的單一階段。輸出帶 SPEAKER_xx 的稿，
+    之後可在第二步用「修正說話者」改成真實角色名。進度：0–65% 轉錄、65–100% 分軌。"""
+    import subprocess, json, tempfile, platform, re as _re, threading
+    try:
+        if platform.system() == "Windows":
+            os.environ["PATH"] += ";" + r"C:\Users\kamiy\AppData\Local\Microsoft\WinGet\Packages\Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe\ffmpeg-8.1.1-full_build\bin"
+
+        # ── 階段一：whisper.cpp 轉錄（0–30%，Metal 很快，給小比例）──
+        binary = _resolve_whispercpp_binary()
+        if not binary:
+            result_q.put(("error",
+                "找不到 whisper-cli。\nMac 請在終端機執行：brew install whisper-cpp\n"
+                "Windows 請安裝 whisper.cpp 並將其加入系統 PATH（或放進 bin/whispercpp-win/）。"))
+            return
+        models_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "models")
+        log_q.put(f"使用引擎：whisper.cpp ＋ 聲學分軌（模型 {model_name}）")
+        model_path = _ensure_whispercpp_model(model_name, models_dir, log_q)
+
+        log_q.put(f"① 準備音檔：{os.path.basename(audio)}")
+        wav = os.path.join(tempfile.gettempdir(), "voxlog_wcppdiar_input.wav")
+        subprocess.run(["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-i", audio,
+                        "-ar", "16000", "-ac", "1", wav], check=True)
+
+        base = os.path.splitext(os.path.basename(audio))[0]
+        out_json_base = os.path.join(tempfile.gettempdir(), f"voxlog_wcppdiar_{base}")
+        cmd = [binary, "-m", model_path, "-f", wav, "-oj", "-of", out_json_base, "-pp",
+               "-l", lang or "auto"]
+        if prompt:
+            cmd += ["--prompt", prompt]
+        log_q.put("① whisper.cpp 轉錄中…")
+        proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
+        for line in proc.stderr:
+            m = _re.search(r"progress\s*=\s*(\d+)%", line)
+            if m:
+                prog_q.put(int(int(m.group(1)) * 0.30))  # 轉錄佔 0–30%
+        proc.wait()
+        if proc.returncode != 0:
+            result_q.put(("error", f"whisper.cpp 轉錄失敗（return code {proc.returncode}）"))
+            return
+        prog_q.put(30)
+
+        with open(out_json_base + ".json", encoding="utf-8") as jf:
+            raw_segs = json.load(jf).get("transcription", [])
+        # 轉成 whisperX align 需要的格式（秒）
+        segments = []
+        for seg in raw_segs:
+            off = seg.get("offsets", {})
+            text = (seg.get("text") or "").strip()
+            if not text:
+                continue
+            segments.append({"start": (off.get("from", 0) or 0) / 1000.0,
+                             "end": (off.get("to", 0) or 0) / 1000.0,
+                             "text": text})
+        if not segments:
+            result_q.put(("error", "whisper.cpp 沒有產出任何文字段落，無法分軌。"))
+            return
+
+        # ── 階段二：whisperX align + pyannote 分軌（65–100%）──
+        import whisperx, torch
+        if torch.cuda.is_available():
+            device = "cuda"
+        elif platform.system() == "Darwin" and torch.backends.mps.is_available():
+            os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"  # pyannote 少數 op 沒 MPS 實作，讓它退回 CPU 而非崩潰
+            device = "mps"
+        else:
+            device = "cpu"
+        log_q.put(f"② 使用裝置：{device.upper()}（對齊／分軌）")
+        audio_data = whisperx.load_audio(audio)
+
+        log_q.put("② 對齊時間戳…")
+        amodel, meta = whisperx.load_align_model(language_code=(lang or "zh"), device=device)
+        aligned = whisperx.align(segments, amodel, meta, audio_data, device,
+                                 return_char_alignments=False)
+        prog_q.put(40)
+
+        log_q.put("② 分析說話人（pyannote 聲紋，這段最久，請耐心）…")
+        from whisperx.diarize import DiarizationPipeline
+        diar = DiarizationPipeline(token=hf_token, device=device)
+        dkw = {}
+        if num_speakers and num_speakers > 0:
+            dkw["num_speakers"] = num_speakers
+        # pyannote 不吐逐步進度；用一條漸近爬升（40→97）讓進度條別卡死，完成後補滿
+        _stop_creep = threading.Event()
+        def _creep():
+            pct = 40.0
+            while not _stop_creep.wait(2.0):
+                pct += (97 - pct) * 0.05
+                prog_q.put(int(pct))
+        threading.Thread(target=_creep, daemon=True).start()
+        try:
+            diar_segs = diar(audio_data, **dkw)
+        finally:
+            _stop_creep.set()
+        result = whisperx.assign_word_speakers(diar_segs, aligned)
+        prog_q.put(98)
+
+        try:
+            import opencc
+            converter = opencc.OpenCC("s2twp")
+        except Exception:
+            converter = None
+
+        out_path = out_path_override or os.path.join(out_dir, f"{base}_transcript.txt")
+        f, out_path = _safe_open_transcript(out_path, log_q)
+        with f:
+            current_speaker = None
+            for seg in result["segments"]:
+                start = seg.get("start", 0)
+                end = seg.get("end", 0)
+                speaker = seg.get("speaker", "SPEAKER_??")
+                text = seg.get("text", "").strip()
+                if not text:
+                    continue
+                if converter:
+                    text = converter.convert(text)
+                text = _collapse_repeats(text)
+                ts = f"[{int(start)//60:02d}:{int(start)%60:02d} --> {int(end)//60:02d}:{int(end)%60:02d}]"
+                if speaker != current_speaker:
+                    if current_speaker is not None:
+                        f.write("\n")
+                    f.write(f"{speaker}：\n")
+                    current_speaker = speaker
+                f.write(f"{ts} {text}\n")
+        prog_q.put(100)
+
+        log_q.put("分軌完成；可在第二步用「修正說話者」把 SPEAKER_xx 改成真實角色名。")
         for tmp_f in (wav, out_json_base + ".json"):
             try:
                 os.remove(tmp_f)
@@ -2438,7 +2602,7 @@ class TranscribeApp:
         for fr in (self.f_model, self.f_wx):
             fr.pack_forget()
         self.f_model.pack(side="left")
-        if val == "whisperx":
+        if val in ("whisperx", "whispercpp_diar"):
             self.f_wx.pack(side="left")
         save_config({"stt_engine": val})
         self.cfg["stt_engine"] = val
@@ -2771,7 +2935,7 @@ class TranscribeApp:
                 self._on_engine_change()
                 engine = "whisperx"
 
-        if engine == "whisperx":
+        if engine in ("whisperx", "whispercpp_diar"):
             hf_token = self.token_var.get().strip()
             if not hf_token:
                 self._set_status("請輸入 HuggingFace Token", RED)
@@ -2780,10 +2944,14 @@ class TranscribeApp:
             num_speakers = self.speakers_var.get()
 
         # whisper.cpp 需要外部的 whisper-cli；沒裝就跳教學引導（含可一鍵複製的安裝指令），不硬跑
-        if engine == "whispercpp" and not _resolve_whispercpp_binary():
+        if engine in ("whispercpp", "whispercpp_diar") and not _resolve_whispercpp_binary():
             self._show_whispercpp_guide()
             self._set_status("尚未安裝 whisper.cpp，請依視窗指示安裝", RED)
             return
+
+        # 開始前就決定輸出路徑：同名先問「覆蓋還是另存」，把結果傳給 worker（三引擎一致）
+        base = os.path.splitext(os.path.basename(audio))[0]
+        out_path = self._resolve_output_path(os.path.join(out_dir, f"{base}_transcript.txt"))
 
         self.correct_btn.configure(state="disabled", fg_color=BLUE_DIM, text_color=SUBTEXT)
         self.rename_spk_btn.configure(state="disabled", fg_color=BLUE_DIM, text_color=SUBTEXT)
@@ -2798,19 +2966,26 @@ class TranscribeApp:
                 target=whisperx_worker,
                 args=(audio, out_dir, self.model_var.get(), lang,
                       hf_token, num_speakers, prompt, write_srt,
-                      self.result_q, self.log_q, self.prog_q),
+                      self.result_q, self.log_q, self.prog_q, out_path),
                 daemon=True)
         elif engine == "whispercpp":
             self.process = multiprocessing.Process(
                 target=whispercpp_worker,
                 args=(audio, out_dir, self.model_var.get(), lang, prompt, write_srt,
-                      self.result_q, self.log_q, self.prog_q),
+                      self.result_q, self.log_q, self.prog_q, out_path),
+                daemon=True)
+        elif engine == "whispercpp_diar":
+            self.process = multiprocessing.Process(
+                target=whispercpp_diar_worker,
+                args=(audio, out_dir, self.model_var.get(), lang,
+                      hf_token, num_speakers, prompt, write_srt,
+                      self.result_q, self.log_q, self.prog_q, out_path),
                 daemon=True)
         else:
             self.process = multiprocessing.Process(
                 target=whisper_worker,
                 args=(audio, out_dir, self.model_var.get(), lang, prompt, write_srt,
-                      self.result_q, self.log_q, self.prog_q),
+                      self.result_q, self.log_q, self.prog_q, out_path),
                 daemon=True)
 
         self.process.start()
