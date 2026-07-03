@@ -1373,7 +1373,7 @@ def _resolve_whispercpp_binary():
 
 def _ensure_whispercpp_model(size, models_dir, log_q):
     """確保 ggml 模型檔存在，不存在則自動下載。回傳模型路徑。"""
-    import urllib.request
+    import requests
     fname = _WHISPERCPP_MODELS.get(size, f"ggml-{size}.bin")
     path = os.path.join(models_dir, fname)
     if os.path.exists(path):
@@ -1381,7 +1381,14 @@ def _ensure_whispercpp_model(size, models_dir, log_q):
     os.makedirs(models_dir, exist_ok=True)
     log_q.put(f"首次使用 whisper.cpp「{size}」模型，下載中（{fname}）…首次需一兩分鐘，之後就不必再等。")
     tmp = path + ".part"
-    urllib.request.urlretrieve(_WHISPERCPP_BASE_URL + fname, tmp)
+    # 用 requests（自帶 certifi 憑證）串流下載：macOS 上 urllib 找不到系統 CA 憑證，
+    # 會報 CERTIFICATE_VERIFY_FAILED；串流寫檔也不會把整包大模型讀進記憶體。
+    with requests.get(_WHISPERCPP_BASE_URL + fname, stream=True, timeout=60) as r:
+        r.raise_for_status()
+        with open(tmp, "wb") as f:
+            for chunk in r.iter_content(chunk_size=1 << 20):
+                if chunk:
+                    f.write(chunk)
     os.replace(tmp, path)
     log_q.put(f"模型下載完成：{fname}")
     return path
