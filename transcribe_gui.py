@@ -233,7 +233,32 @@ def _words_to_srt_segments(words, max_chars=20):
     return segments
 
 
-def _call_ai(prompt, ai_engine, api_key):
+# 「暫時性」網路錯誤特徵：連線瞬斷、SSL EOF、逾時、5xx、限流等——重試通常會成功。
+# 金鑰錯／400 之類不在此列，會直接讓使用者看到，不浪費時間重試。
+_TRANSIENT_AI_ERR = re.compile(
+    r"disconnect|EOF|SSL|timed out|timeout|connection reset|connection aborted|"
+    r"remoteprotocol|temporarily|unavailable|overloaded|rate.?limit|"
+    r"too many requests|\b50\d\b|\b429\b",
+    re.IGNORECASE,
+)
+
+
+def _is_transient_ai_error(exc):
+    return bool(_TRANSIENT_AI_ERR.search(f"{type(exc).__name__}: {exc}"))
+
+
+def _call_ai(prompt, ai_engine, api_key, max_attempts=3):
+    """呼叫雲端 AI，遇暫時性連線錯誤自動重試（指數退避）；真錯誤立即拋出。"""
+    for attempt in range(1, max_attempts + 1):
+        try:
+            return _call_ai_once(prompt, ai_engine, api_key)
+        except Exception as e:
+            if attempt >= max_attempts or not _is_transient_ai_error(e):
+                raise
+            time.sleep(2 * attempt)   # 2s、4s… 讓瞬斷／短暫限流有時間恢復
+
+
+def _call_ai_once(prompt, ai_engine, api_key):
     if ai_engine == "claude":
         import anthropic
         model = _model_id(load_config().get("claude_model", "claude-sonnet-4-6"))
