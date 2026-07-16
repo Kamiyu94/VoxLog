@@ -2263,8 +2263,8 @@ class TranscribeApp:
                      fg_color="transparent", text_color=SUBTEXT,
                      font=F(FONT_UI, 12), width=150, anchor="center").pack(pady=(4, 0))
 
-        # 切到正確的引擎，顯示對應的設定列
-        self._on_engine_change()
+        # 切到正確的引擎，顯示對應的設定列（啟動時的同步，不是使用者操作，故不跳說明視窗）
+        self._on_engine_change(user_action=False)
 
         # ── 輸出資料夾 + 字幕（移到情境上方，維持「設輸出 → 填情境 → 開始」順序）──
         r_out = ctk.CTkFrame(tab_t, fg_color="transparent")
@@ -2657,11 +2657,14 @@ class TranscribeApp:
             lb = lb[len(_LOCK_PREFIX):]
         return _STT_LABEL2VAL.get(lb, "whisper")
 
-    def _on_engine_change(self):
+    def _on_engine_change(self, user_action=True):
         val = self._engine_val()
-        # 輕量版選到需要 torch 的引擎（含說話人辨識）：跳說明教怎麼升級，並退回 whisper.cpp
+        # 輕量版選到需要 torch 的引擎（含說話人辨識）：退回 whisper.cpp。
+        # 只有使用者自己選的時候才跳說明；啟動時同步版面（例如舊 config 還留著完整版的引擎）
+        # 不能跳，否則使用者一開程式就被 modal 視窗鎖住、以為當機。
         if val in _TORCH_ENGINES and not _HAS_TORCH:
-            self._show_needs_full_guide(val)
+            if user_action:
+                self._show_needs_full_guide(val)
             self.engine_var.set(_engine_display_label("whispercpp"))
             val = "whispercpp"
         for fr in (self.f_model, self.f_wx):
@@ -2996,9 +2999,9 @@ class TranscribeApp:
                 parent=self.root,
             )
             if switch:
-                self.engine_var.set(_STT_VAL2LABEL["whisperx"])
+                self.engine_var.set(_engine_display_label("whisperx"))
                 self._on_engine_change()
-                engine = "whisperx"
+                engine = self._engine_val()
 
         if engine in ("whisperx", "whispercpp_diar"):
             hf_token = self.token_var.get().strip()
@@ -3372,6 +3375,20 @@ class TranscribeApp:
         except Exception:
             pass
 
+    def _center_dialog(self, win):
+        """把 modal 視窗擺到主視窗正中央。
+        不做的話它會照系統預設落在螢幕角落，加上 grab_set 鎖住主視窗，使用者會以為程式當掉。"""
+        try:
+            win.update_idletasks()
+            w, h = win.winfo_width(), win.winfo_height()
+            x = self.root.winfo_x() + (self.root.winfo_width() - w) // 2
+            y = self.root.winfo_y() + (self.root.winfo_height() - h) // 3
+            win.geometry(f"+{max(x, 0)}+{max(y, 0)}")
+            win.lift()
+            win.focus_force()
+        except Exception:
+            pass
+
     def _show_needs_full_guide(self, engine):
         """輕量版選到需要 torch 的引擎（尤其說話人辨識）時，教使用者怎麼升級成完整版。"""
         is_mac = sys.platform == "darwin"
@@ -3436,6 +3453,7 @@ class TranscribeApp:
                       fg_color=ACCENT, hover_color="#2980B9", text_color="white",
                       font=ctk.CTkFont(FONT_UI, 13)).pack(pady=(16, 20))
         win.transient(self.root)
+        self._center_dialog(win)
 
     def _show_whispercpp_guide(self):
         """選了 whisper.cpp 但沒裝 whisper-cli 時，跳教學引導（含可一鍵複製的安裝指令）。"""
@@ -3495,6 +3513,7 @@ class TranscribeApp:
                       fg_color=GREEN, hover_color="#219A52", text_color="white",
                       font=ctk.CTkFont(FONT_UI, 13)).pack(pady=(10, 20))
         win.transient(self.root)
+        self._center_dialog(win)
 
     def generate_notes(self):
         if not self.transcript_path:
