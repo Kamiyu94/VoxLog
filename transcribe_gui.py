@@ -447,6 +447,8 @@ def _suggest_model():
 def _suggest_stt_engine():
     """首次啟動時依機器條件建議地端引擎。MacBook Air 或記憶體 ≤ 8GB → whisper.cpp
     （輕、不吃記憶體、Mac 上穩）；其餘維持原本的 whisper。只在沒有存過引擎時呼叫。"""
+    if not _HAS_TORCH:
+        return "whispercpp"  # 輕量版沒 torch，別建議一個它根本跑不了的引擎
     try:
         gb = _total_ram_gb()
         if gb is not None and gb <= 8.5:
