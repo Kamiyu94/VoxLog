@@ -39,6 +39,7 @@
     font-size:20px; margin:34px 0 12px; padding-top:10px;
     display:flex; align-items:center; gap:10px;
   }
+  h3{font-size:16.5px; margin:22px 0 8px; color:#fff;}
   .num{
     flex:0 0 30px; width:30px; height:30px; border-radius:50%;
     background:var(--accent); color:#fff; font-size:15px; font-weight:700;
@@ -53,6 +54,19 @@
   .card{
     background:var(--surface2); border:1px solid var(--border);
     border-radius:14px; padding:16px 16px 4px; margin:10px 0 4px;
+  }
+
+  /* 版本選擇卡 */
+  .pick{display:flex; gap:12px; flex-wrap:wrap; margin:14px 0;}
+  .pick .opt{
+    flex:1 1 260px; background:var(--surface2); border:1px solid var(--border);
+    border-radius:14px; padding:16px;
+  }
+  .pick .opt h4{margin:0 0 6px; font-size:16px; color:#fff;}
+  .pick .opt .file{
+    display:inline-block; margin-top:8px; font-family:Consolas,"SF Mono",monospace;
+    font-size:13px; color:var(--accent); background:#161616;
+    border:1px solid var(--border); border-radius:8px; padding:4px 9px;
   }
 
   /* 程式碼區塊 + 複製鈕 */
@@ -124,16 +138,35 @@
 
 <div class="wrap">
 
-  <p class="muted">這版超簡單：<strong>裝好 Python</strong>,然後<strong>雙擊一個檔案</strong>,其餘(FFmpeg、套件、啟動)全自動。照下面做即可。</p>
+  <p class="muted">這版超簡單:<strong>裝好 Python</strong>,然後<strong>雙擊一個安裝檔</strong>,其餘(FFmpeg、套件、啟動)全自動。照下面做即可。</p>
 
   <div class="toc">
+    <a href="#pick"><span class="n">0</span>先選一個版本</a>
     <a href="#s1"><span class="n">1</span>安裝 Python</a>
     <a href="#s2"><span class="n">2</span>下載專案</a>
-    <a href="#s3"><span class="n">3</span>雙擊 VoxLog.bat(全自動)</a>
-    <a href="#s4"><span class="n">4</span>建一個桌面捷徑</a>
+    <a href="#s3"><span class="n">3</span>雙擊安裝檔(全自動)</a>
+    <a href="#s4"><span class="n">4</span>啟動與桌面捷徑</a>
     <a href="#s5"><span class="n">5</span>填 API Key 開始用</a>
     <a href="#update"><span class="n">🔄</span>之後怎麼更新到最新版</a>
-    <a href="#gpu"><span class="n">🚀</span>有 NVIDIA 顯卡？開啟 GPU 加速</a>
+    <a href="#gpu"><span class="n">🚀</span>有 NVIDIA 顯卡?GPU 加速</a>
+  </div>
+
+  <!-- 0 -->
+  <h2 id="pick"><span class="num">0</span>先選一個版本</h2>
+  <div class="pick">
+    <div class="opt">
+      <h4>🪶 輕量版</h4>
+      <p class="muted" style="margin:4px 0;">較舊 / 沒有獨立顯卡的電腦。做<strong>逐字稿 ＋ AI 摘要</strong>,<strong>不裝約 2GB 的 torch</strong>,又小又快。</p>
+      <span class="file">install-lite.bat</span>
+    </div>
+    <div class="opt">
+      <h4>🧰 完整版</h4>
+      <p class="muted" style="margin:4px 0;">要分辨<strong>「誰說了哪句」</strong>(說話人辨識),或有 NVIDIA 顯卡想 GPU 加速。含 torch。</p>
+      <span class="file">install-full.bat</span>
+    </div>
+  </div>
+  <div class="note tip">
+    <span class="ic">💡 不確定選哪個?</span>只是想把錄音變文字、做會議摘要 → <strong>選輕量版就好</strong>。之後想升級成完整版,隨時雙擊 <code>install-full.bat</code> 即可,<strong>不用重來</strong>。
   </div>
 
   <!-- 1 -->
@@ -150,57 +183,50 @@
 
   <!-- 2 -->
   <h2 id="s2"><span class="num">2</span>下載專案</h2>
-  <p><strong>最簡單(免安裝 git):</strong></p>
-  <p class="muted">打開 <a href="https://github.com/Kamiyu94/VoxLog" target="_blank" rel="noopener">GitHub 專案頁</a> → 綠色 <kbd>&lt;&gt; Code</kbd> 按鈕 → <kbd>Download ZIP</kbd> → <strong>解壓縮</strong>到你想放的地方(例如「文件」資料夾)。</p>
-  <div class="note warn">
-    <span class="ic">📁</span>記住這個 <strong>VoxLog 資料夾</strong>放在哪、<strong>別把裡面的檔案拆開搬</strong>。整包要待在一起才能跑。
-  </div>
-  <p class="muted" style="margin-top:14px;"><strong>(進階)有裝 git 的話也可以:</strong></p>
+  <p><strong>最建議(之後能一鍵更新):用 git clone。</strong>裝好 <a href="https://git-scm.com/download/win" target="_blank" rel="noopener">git</a> 後,在你想放的地方(例如「文件」)開啟終端機,貼:</p>
   <div class="code">
     <button class="copy">複製</button>
     <pre>git clone https://github.com/Kamiyu94/VoxLog.git</pre>
   </div>
-
-  <!-- 3 -->
-  <h2 id="s3"><span class="num">3</span>雙擊 <code>VoxLog.bat</code>(全自動)</h2>
-  <p>進到解壓好的 VoxLog 資料夾,找到 <span class="big">VoxLog.bat</span>,<strong>滑鼠左鍵點兩下</strong>。就這樣 —— 它會自動幫你:</p>
-  <div class="card">
-    <p style="margin:4px 0 10px;">
-      ✓ 偵測 Python<br>
-      ✓ 自動安裝 FFmpeg<br>
-      ✓ 建立環境、下載所有需要的套件<br>
-      ✓ 裝完直接打開 VoxLog
-    </p>
+  <p class="muted">這樣以後更新只要雙擊 <code>update.bat</code> 就好。</p>
+  <div class="note tip">
+    <span class="ic">📦 沒有 git 也行(下載 ZIP)</span>打開 <a href="https://github.com/Kamiyu94/VoxLog" target="_blank" rel="noopener">GitHub 專案頁</a> → 綠色 <kbd>&lt;&gt; Code</kbd> → <kbd>Download ZIP</kbd> → 解壓縮。<strong>差別:</strong>ZIP 版之後沒辦法用 <code>update.bat</code> 一鍵更新(要重新下載 ZIP 覆蓋),見最後的「更新」段。
   </div>
   <div class="note warn">
-    <span class="ic">⏳ 第一次會比較久</span>它要下載 <strong>約 2GB</strong> 的語音模型套件,網路要穩、<strong>請耐心等(可能 10 分鐘以上)</strong>。畫面停著沒動<strong>不是當機</strong>,是在下載。中途別關。
+    <span class="ic">📁</span>記住這個 <strong>VoxLog 資料夾</strong>放在哪、<strong>別把裡面的檔案拆開搬</strong>。整包要待在一起才能跑。
   </div>
+
+  <!-- 3 -->
+  <h2 id="s3"><span class="num">3</span>雙擊安裝檔(全自動)</h2>
+  <p>進到 VoxLog 資料夾,<strong>雙擊你選的那個安裝檔</strong>:</p>
+  <div class="card">
+    <p style="margin:6px 0;">🪶 輕量版 → 雙擊 <span class="big">install-lite.bat</span></p>
+    <p style="margin:6px 0;">🧰 完整版 → 雙擊 <span class="big">install-full.bat</span></p>
+  </div>
+  <p class="muted">它會自動:偵測 Python → 裝 FFmpeg → 建環境、下載套件 → 裝完直接開 VoxLog。</p>
   <div class="note tip">
     <span class="ic">🛡️</span>若 Windows 跳出「<strong>已保護你的電腦</strong>」藍色視窗 → 點 <kbd>其他資訊</kbd> → <kbd>仍要執行</kbd>。(這是因為 .bat 沒有付費簽章,不是病毒。)
   </div>
-  <div class="note tip">
-    <span class="ic">💡</span>萬一第一次轉錄時說「找不到 ffmpeg」,把視窗關掉、<strong>再雙擊一次 VoxLog.bat</strong> 就好(剛裝的 FFmpeg 需要重開才生效)。
+  <div class="note warn">
+    <span class="ic">⏳ 完整版第一次會比較久</span>完整版要下載 <strong>約 2GB</strong> 的 torch,網路要穩、<strong>請耐心等(可能 10 分鐘以上)</strong>。畫面停著沒動<strong>不是當機</strong>,是在下載,中途別關。<strong>輕量版沒有這 2GB,快很多。</strong>
   </div>
   <div class="note tip">
-    <span class="ic">🎙️ whisper.cpp 引擎已內建,免安裝</span>輕量的 whisper.cpp 辨識引擎(適合較舊/沒有獨立顯卡的電腦)<strong>已經包在專案裡</strong>(<code>bin\whispercpp-win\</code>),不需要另外下載或設定,選了就能用。辨識模型會在第一次轉錄時自動下載。
+    <span class="ic">🎙️ whisper.cpp 引擎已內建,免安裝</span>輕量的 whisper.cpp 辨識引擎(適合較舊/沒有獨立顯卡的電腦)<strong>已經包在專案裡</strong>(<code>bin\whispercpp-win\</code>),不需另外下載或設定。辨識模型會在第一次轉錄時自動下載。
   </div>
   <div class="note tip">
-    <span class="ic">🪶 電腦較舊、沒有 NVIDIA 顯卡?</span>可改用<strong>輕量安裝</strong>(只用 whisper.cpp、不裝約 2GB 的 torch):開 PowerShell 到 VoxLog 資料夾,跑
-    <code>python -m venv venv</code> →
-    <code>venv\Scripts\activate</code> →
-    <code>pip install -r requirements-lite.txt</code> → <code>python transcribe_gui.py</code>。
-    (若 <code>activate</code> 被擋,先跑 <code>Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned</code> 按 Y。)
+    <span class="ic">💡</span>萬一第一次轉錄時說「找不到 ffmpeg」,把視窗關掉、<strong>再雙擊一次安裝檔</strong>就好(剛裝的 FFmpeg 需要重開才生效)。
   </div>
 
   <!-- 4 -->
-  <h2 id="s4"><span class="num">4</span>建一個桌面捷徑(方便每天用)</h2>
-  <p>不想每次都翻資料夾的話,做一個桌面捷徑:</p>
+  <h2 id="s4"><span class="num">4</span>啟動與桌面捷徑</h2>
+  <p>安裝完會自動開 App。<strong>以後要用</strong>,雙擊資料夾裡的 <span class="big">VoxLog.bat</span> 即可(它是平常的啟動檔;安裝檔只在第一次或換版本時才用)。</p>
+  <h3>做一個桌面捷徑(方便每天用)</h3>
   <p class="muted">在 <code>VoxLog.bat</code> 上按<strong>滑鼠右鍵</strong> → <kbd>傳送到</kbd> → <kbd>桌面 (建立捷徑)</kbd>。以後桌面點兩下就開。</p>
   <div class="note warn">
     <span class="ic">⚠️</span>要建的是<strong>「捷徑」</strong>。<strong>別把 VoxLog.bat 本身拖到桌面</strong> —— 它一旦離開原資料夾就找不到程式、會打不開。
   </div>
   <div class="note tip">
-    <span class="ic">⌨️ 想用打字啟動?第一次雙擊後就行了</span>你第一次雙擊 <code>VoxLog.bat</code> 時,它會自動<strong>註冊一個 <code>voxlog</code> 指令</strong>。之後在「命令提示字元」或 PowerShell 任何位置打 <code>voxlog</code> 按 Enter,就能啟動,不用翻資料夾。(若打了沒反應,把終端機<strong>關掉重開</strong>一次再試 —— 剛註冊的指令需要新開的視窗才認得。)
+    <span class="ic">⌨️ 想用打字啟動?</span>第一次雙擊安裝檔時,會自動<strong>註冊一個 <code>voxlog</code> 指令</strong>。之後在「命令提示字元」或 PowerShell 打 <code>voxlog</code> 按 Enter 就能啟動。(若沒反應,把終端機<strong>關掉重開</strong>一次再試。)
   </div>
 
   <!-- 5 -->
@@ -212,47 +238,35 @@
        ③ 按 <strong>「驗證」</strong>,變綠就成功(會自動存檔)<br>
        ④ 載入音檔或 <strong>.md / 逐字稿</strong> → 開始轉錄、校正、產生摘要</p>
   </div>
+  <div class="note tip">
+    <span class="ic">🗣️ 輕量版看到辨識引擎有些選項是灰的(🔒)?</span>那些(含「說話人辨識」)要完整版才有。要用的話,雙擊資料夾裡的 <code>install-full.bat</code> 升級後重開 App 即可。只要逐字稿、不需要分辨誰在說話,維持輕量版、用「whisper.cpp」就好。
+  </div>
 
   <div class="check">
-    <b>✓ 完成!</b> 以後每次要用,就<strong>雙擊桌面捷徑</strong>(或資料夾裡的 VoxLog.bat)即可,不必再重裝。
+    <b>✓ 完成!</b> 以後每次要用,雙擊桌面捷徑(或資料夾裡的 <code>VoxLog.bat</code>)即可,不必再重裝。
   </div>
 
   <!-- 更新 -->
   <hr>
   <h2 id="update"><span class="num" style="background:var(--green);">🔄</span>之後怎麼更新到最新版</h2>
-  <p>VoxLog 改版時更新很簡單,<strong>不會動到你的 API Key 和已裝好的環境</strong>(它們不在下載檔裡)。</p>
+  <p>VoxLog 改版時更新很簡單,<strong>不會動到你的 API Key 和已裝好的環境</strong>。</p>
 
-  <h3>① 拿到新版檔案</h3>
-  <p class="muted"><strong>當初用「下載 ZIP」的人(多數):</strong>到 <a href="https://github.com/Kamiyu94/VoxLog" target="_blank" rel="noopener">GitHub 專案頁</a> → 綠色 <kbd>&lt;&gt; Code</kbd> → <kbd>Download ZIP</kbd> → 解壓縮後,把裡面的檔案<strong>整包覆蓋</strong>到你原本的 VoxLog 資料夾(跳出「是否取代檔案」就選 <strong>全部取代</strong>)。</p>
+  <h3>git clone 的人(建議):雙擊 <code>update.bat</code></h3>
+  <p>進 VoxLog 資料夾,<strong>雙擊 <span class="big">update.bat</span></strong>。它會自動 <code>git pull</code> 取最新程式碼、判斷你是輕量還完整版、補裝新套件。看到「更新完成」就可以雙擊 <code>VoxLog.bat</code> 重開。</p>
   <div class="note tip">
-    <span class="ic">🔒</span>你的 <code>venv</code>(已下載約 2GB 的環境)和 <code>config.json</code>(API Key)<strong>不在 ZIP 裡,不會被覆蓋</strong>,放心覆蓋。
-  </div>
-  <p class="muted" style="margin-top:14px;"><strong>當初用 git clone 的人:</strong>進 VoxLog 資料夾、在網址列打 <code>cmd</code> 按 Enter 開終端機,貼這行:</p>
-  <div class="code">
-    <button class="copy">複製</button>
-    <pre>git pull</pre>
+    <span class="ic">🔒</span>你的 <code>config.json</code>(API Key)和 <code>venv</code>(環境)都<strong>不會被覆蓋</strong>。
   </div>
 
-  <h3>② 雙擊 VoxLog.bat(或打 voxlog)</h3>
-  <p>覆蓋完,照常<strong>雙擊 VoxLog.bat</strong>(或桌面捷徑、或打 <code>voxlog</code>)。它會<strong>自動偵測有沒有新增套件、需要的話補裝</strong>,然後開啟,新功能就生效了。</p>
+  <h3>下載 ZIP 的人:重新下載覆蓋</h3>
+  <p class="muted">到 <a href="https://github.com/Kamiyu94/VoxLog" target="_blank" rel="noopener">GitHub 專案頁</a> → <kbd>&lt;&gt; Code</kbd> → <kbd>Download ZIP</kbd> → 解壓後把檔案<strong>整包覆蓋</strong>到原本的 VoxLog 資料夾(跳出「是否取代」選<strong>全部取代</strong>)。然後雙擊 <code>VoxLog.bat</code>,它會自動偵測並補裝新套件。</p>
   <div class="note warn">
-    <span class="ic">⏳</span>更新後第一次啟動,若有新套件會花幾秒補裝(畫面顯示「<strong>安裝/更新相依套件中</strong>」是正常的),裝完會自動開,不用做別的。
-  </div>
-
-  <div class="note tip">
-    <span class="ic">✨ 最近這版多了什麼</span>
-    <ul style="margin:6px 0 0; padding-left:20px;">
-      <li><strong>完成後自動開檔:</strong>逐字稿、AI 校正、摘要做完會自動用預設程式打開給你看,不用自己去資料夾找。</li>
-      <li><strong>摘要改成 Word 檔(.docx):</strong>「產生摘要」現在直接輸出 <code>_摘要.docx</code>,Word 直接開,標題、清單、待辦表格都排好。</li>
-      <li><strong>低階電腦更穩:</strong>預設轉錄模型改為較省記憶體的 <code>small</code>,記憶體小的電腦不會一跑就閃退(要更高精度再在介面手動選 <code>medium</code>/<code>large</code>)。</li>
-      <li><strong>打 <code>voxlog</code> 就能啟動:</strong>不想翻資料夾的話,終端機打 <code>voxlog</code> 即可開(見步驟 4 說明)。</li>
-    </ul>
+    <span class="ic">⚠️</span>ZIP 版無法用 <code>update.bat</code>(它需要 git)。想要一鍵更新的話,改用上面的 git clone 版本。
   </div>
 
   <!-- GPU 加速 -->
   <hr>
-  <h2 id="gpu"><span class="num" style="background:var(--green);">🚀</span>有 NVIDIA 顯卡?GPU 加速(已自動)</h2>
-  <p>語音轉錄用 <strong>NVIDIA 顯卡(GPU)</strong>會比 CPU 快好幾倍。好消息:<strong>你什麼都不用做</strong> —— <code>VoxLog.bat</code> 會在安裝時<strong>自動偵測有沒有 NVIDIA 顯卡</strong>,有的話就自動換成 GPU 版,沒有就維持 CPU 版照常能用。</p>
+  <h2 id="gpu"><span class="num" style="background:var(--green);">🚀</span>有 NVIDIA 顯卡?GPU 加速(完整版・已自動)</h2>
+  <p>語音轉錄用 <strong>NVIDIA 顯卡(GPU)</strong>會比 CPU 快好幾倍。<strong>只有完整版(含 torch)有這功能</strong>,而且<strong>你什麼都不用做</strong> —— <code>install-full.bat</code> 會在安裝時自動偵測有沒有 NVIDIA 顯卡,有的話就自動換成 GPU 版。</p>
   <div class="card">
     <p style="margin:4px 0 10px;">
       ✓ 偵測到 NVIDIA 顯卡 → 自動裝 CUDA(GPU)版,啟用加速<br>
@@ -265,18 +279,9 @@
   </div>
 
   <h3>裝完還是只用 CPU?(故障排除)</h3>
-  <p class="muted">幾乎都是同一個原因:<strong>NVIDIA 顯卡驅動太舊</strong>,撐不起新版 CUDA。</p>
-  <p class="muted">解法:用 <strong>GeForce Experience</strong> 或到 <a href="https://www.nvidia.com/zh-tw/geforce/drivers/" target="_blank" rel="noopener">NVIDIA 官網</a>把顯卡驅動更新到最新,然後<strong>再雙擊一次 <code>VoxLog.bat</code></strong>,它會自動再試一次換裝。</p>
-  <div class="note tip">
-    <span class="ic">🛠️ 進階:更新驅動還是不行</span>
-    極少數很舊的卡/驅動可能連 CUDA 12.8 都撐不住,可在 VoxLog 資料夾開 <code>cmd</code>,手動改裝<strong>較舊的 cu126</strong> 版試試:
-    <div class="code" style="margin-top:8px;">
-      <button class="copy">複製</button>
-      <pre>venv\Scripts\python -m pip install --force-reinstall --no-deps torch==2.8.0 torchvision==0.23.0 torchaudio==2.8.0 --index-url https://download.pytorch.org/whl/cu126</pre>
-    </div>
-  </div>
+  <p class="muted">幾乎都是同一個原因:<strong>NVIDIA 顯卡驅動太舊</strong>,撐不起新版 CUDA。解法:用 <strong>GeForce Experience</strong> 或到 <a href="https://www.nvidia.com/zh-tw/geforce/drivers/" target="_blank" rel="noopener">NVIDIA 官網</a>把驅動更新到最新,然後<strong>再雙擊一次 <code>VoxLog.bat</code></strong>,它會自動再試一次換裝。</p>
   <div class="note warn">
-    <span class="ic">⚠️ 給工程師</span>torch 已釘在 <code>2.8.0</code>(WhisperX 3.8.6 相容版),<strong>請勿手動 <code>pip install</code> 不帶版本號的 torch</strong> —— 會抓到最新版(如 2.11)而讓 WhisperX 引擎出錯。
+    <span class="ic">⚠️ 給工程師</span>torch 已釘在 <code>2.8.0</code>(WhisperX 3.8.6 相容版),<strong>請勿手動 <code>pip install</code> 不帶版本號的 torch</strong> —— 會抓到最新版而讓 WhisperX 引擎出錯。
   </div>
 
   <footer>

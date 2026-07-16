@@ -44,9 +44,14 @@ VoxLog 是一個具備圖形化介面 (GUI) 的語音轉文字與 AI 輔助處�
 > 💡 全程不用打任何指令。第一次可能會跳 Apple 的「安裝命令列工具」小視窗，按一下 Install 即可。
 > 若雙擊時被 macOS 擋（「無法打開，來自未識別的開發者」），改成**對檔案按右鍵 →「打開」**一次即可。
 
-### 🪟 Windows：一鍵啟動
+### 🪟 Windows：雙擊安裝
 
-用瀏覽器開 [`WINDOWS_SETUP.html`](WINDOWS_SETUP.html) 照圖文步驟裝，之後雙擊 `VoxLog.bat` 啟動。
+1. 先裝 [Python 3.11/3.12](https://www.python.org/downloads/)（安裝時務必勾「Add python.exe to PATH」）
+2. 取得專案（`git clone`，或下載 ZIP）
+3. **雙擊** `install-lite.bat`（完整版雙擊 `install-full.bat`）→ 自動裝好並啟動
+4. 之後平常**雙擊 `VoxLog.bat`** 啟動；要更新**雙擊 `update.bat`**
+
+圖文步驟見 [`WINDOWS_SETUP.html`](WINDOWS_SETUP.html)。
 
 > 想了解每個版本改了什麼，看 [CHANGELOG.md](CHANGELOG.md)。下面是**手動安裝**的完整步驟（雙擊安裝失敗、或想自己一步步來時用）。
 
