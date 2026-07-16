@@ -1,0 +1,7 @@
+# Windows 批次檔一律用 CRLF（LF-only 在 cmd.exe 上可能出錯）
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# macOS 啟動／安裝腳本一律用 LF
+*.command text eol=lf
+voxlog     text eol=lf

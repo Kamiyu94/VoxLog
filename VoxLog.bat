@@ -10,6 +10,16 @@ echo     VoxLog  -  語音轉文字 / AI 摘要工具
 echo  ==========================================
 echo.
 
+REM ---------- 0. 決定版本（輕量 lite / 完整 full）----------
+REM   由 install-lite.bat / install-full.bat 透過 VOXLOG_VARIANT 指定；
+REM   否則沿用 venv 內記錄；再否則預設完整版（向後相容既有安裝）。
+if not defined VOXLOG_VARIANT if exist "venv\.voxlog_variant" set /p VOXLOG_VARIANT=<"venv\.voxlog_variant"
+if not defined VOXLOG_VARIANT set "VOXLOG_VARIANT=full"
+set "REQ=requirements.txt"
+if /i "%VOXLOG_VARIANT%"=="lite" set "REQ=requirements-lite.txt"
+echo  [i] 版本：%VOXLOG_VARIANT%（相依清單：%REQ%）
+echo.
+
 REM ---------- 1. 偵測 Python ----------
 set "PY="
 py -3 --version >nul 2>nul && set "PY=py -3"
@@ -51,22 +61,25 @@ if not exist "venv\Scripts\python.exe" (
   )
 )
 
+REM 記錄這個 venv 是輕量還完整版，之後啟動／更新都依此判斷（不會誤把 lite 灌成 full）
+> "venv\.voxlog_variant" echo %VOXLOG_VARIANT%
+
 REM ---------- 4. 安裝套件（首次完整安裝；之後只在 requirements.txt 變動時自動補裝） ----------
 set "NEED_INSTALL="
 if not exist "venv\.voxlog_installed" set "NEED_INSTALL=1"
 if not exist "venv\.voxlog_reqs" set "NEED_INSTALL=1"
 if exist "venv\.voxlog_reqs" (
-  fc /b requirements.txt "venv\.voxlog_reqs" >nul 2>nul || set "NEED_INSTALL=1"
+  fc /b "%REQ%" "venv\.voxlog_reqs" >nul 2>nul || set "NEED_INSTALL=1"
 )
 
 if defined NEED_INSTALL (
   echo.
-  echo  [*] 安裝/更新相依套件中... 首次含 torch 約 2GB，
-  echo      網路要穩、請耐心等待（首次可能 10 分鐘以上，畫面沒動不是當機）。
+  echo  [*] 安裝/更新相依套件中...（完整版首次含 torch 約 2GB；輕量版不含 torch、快很多）
+  echo      網路要穩、請耐心等待（完整版首次可能 10 分鐘以上，畫面沒動不是當機）。
   echo      更新時只會補裝新增的套件，很快。
   echo.
   "venv\Scripts\python.exe" -m pip install --upgrade pip
-  "venv\Scripts\python.exe" -m pip install -r requirements.txt
+  "venv\Scripts\python.exe" -m pip install -r "%REQ%"
   if errorlevel 1 (
     echo.
     echo  [X] 套件安裝失敗，請檢查網路後再雙擊一次本檔重試。
@@ -74,7 +87,7 @@ if defined NEED_INSTALL (
     exit /b 1
   )
   echo installed> "venv\.voxlog_installed"
-  copy /y requirements.txt "venv\.voxlog_reqs" >nul
+  copy /y "%REQ%" "venv\.voxlog_reqs" >nul
   echo  [OK] 套件已就緒！
 ) else (
   echo  [OK] 套件已是最新，略過安裝步驟
@@ -84,6 +97,8 @@ REM ---------- 5. NVIDIA GPU：自動換成 CUDA 版 torch（語音轉錄大幅�
 REM   requirements.txt 裝的是 CPU 版 torch（Windows 預設）。
 REM   若偵測到 NVIDIA 顯卡，就換成 cu128 版；torch 已釘 2.8.0（WhisperX 相容版），
 REM   cu128 同時支援 RTX 40 / 50 系列，舊卡也吃得到，故不需依顯卡分版本。
+REM   輕量版不含 torch，直接略過。
+if /i "%VOXLOG_VARIANT%"=="lite" goto skip_gpu
 where nvidia-smi >nul 2>nul
 if errorlevel 1 goto skip_gpu
 
