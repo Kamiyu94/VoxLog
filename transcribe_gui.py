@@ -370,6 +370,32 @@ STT_ENGINES = [
 _STT_LABEL2VAL = {lb: v for v, lb in STT_ENGINES}
 _STT_VAL2LABEL = {v: lb for v, lb in STT_ENGINES}
 
+# 需要 torch 的引擎（地端 Whisper / WhisperX / whisper.cpp＋分軌）。輕量版（requirements-lite）
+# 沒裝 torch，這些引擎跑不起來 —— 只有 whisper.cpp 可用。用「上鎖」在下拉選單標示，
+# 使用者選到時再跳說明教他怎麼升級成完整版，而不是讓他選了才報一堆錯。
+_TORCH_ENGINES = {"whisper", "whisperx", "whispercpp_diar"}
+_LOCK_PREFIX = "🔒 "
+
+
+def _detect_torch():
+    """輕量偵測環境有沒有安裝 torch（只查得到、不真的 import，避免拖慢啟動）。"""
+    try:
+        import importlib.util
+        return importlib.util.find_spec("torch") is not None
+    except Exception:
+        return False
+
+
+_HAS_TORCH = _detect_torch()
+
+
+def _engine_display_label(val):
+    """引擎的下拉顯示字。輕量版（沒 torch）時，需 torch 的引擎前面加上鎖頭示意「要完整版」。"""
+    lb = _STT_VAL2LABEL.get(val, _STT_VAL2LABEL["whisper"])
+    if val in _TORCH_ENGINES and not _HAS_TORCH:
+        return _LOCK_PREFIX + lb
+    return lb
+
 # Whisper 的 initial_prompt 約有 224 token 上限，超過會被截斷而失效；中文粗估
 # 1 字 ≈ 1 token，這裡保守抓 180 字當整段預算，扣掉固定前綴後剩給「術語」的額度。
 INITIAL_PROMPT_BUDGET = 180
@@ -2132,10 +2158,9 @@ class TranscribeApp:
             if _saved_engine == "whispercpp" and not self.cfg.get("stt_model"):
                 save_config({"stt_model": "medium"})
                 self.cfg["stt_model"] = "medium"
-        self.engine_var = tk.StringVar(
-            value=_STT_VAL2LABEL.get(_saved_engine, _STT_VAL2LABEL["whisper"]))
+        self.engine_var = tk.StringVar(value=_engine_display_label(_saved_engine))
         ctk.CTkComboBox(row_eng, variable=self.engine_var,
-                        values=[lb for _, lb in STT_ENGINES],
+                        values=[_engine_display_label(v) for v, _ in STT_ENGINES],
                         width=250, state="readonly",
                         command=lambda *_: self._on_engine_change(),
                         fg_color=BG, text_color=TEXT, button_color=BORDER,
@@ -2626,11 +2651,19 @@ class TranscribeApp:
 
     # ── Callbacks ──────────────────────────────────
     def _engine_val(self):
-        """目前選的辨識引擎內部值（whisper / whisperx）。"""
-        return _STT_LABEL2VAL.get(self.engine_var.get(), "whisper")
+        """目前選的辨識引擎內部值（whisper / whisperx）。脫掉輕量版的鎖頭前綴再查。"""
+        lb = self.engine_var.get()
+        if lb.startswith(_LOCK_PREFIX):
+            lb = lb[len(_LOCK_PREFIX):]
+        return _STT_LABEL2VAL.get(lb, "whisper")
 
     def _on_engine_change(self):
         val = self._engine_val()
+        # 輕量版選到需要 torch 的引擎（含說話人辨識）：跳說明教怎麼升級，並退回 whisper.cpp
+        if val in _TORCH_ENGINES and not _HAS_TORCH:
+            self._show_needs_full_guide(val)
+            self.engine_var.set(_engine_display_label("whispercpp"))
+            val = "whispercpp"
         for fr in (self.f_model, self.f_wx):
             fr.pack_forget()
         self.f_model.pack(side="left")
@@ -2974,6 +3007,12 @@ class TranscribeApp:
                 return
             save_config({"hf_token": hf_token})
             num_speakers = self.speakers_var.get()
+
+        # 輕量版（沒 torch）擋下需要 torch 的引擎，跳說明教怎麼升級成完整版，不硬跑報一堆錯
+        if engine in _TORCH_ENGINES and not _HAS_TORCH:
+            self._show_needs_full_guide(engine)
+            self._set_status("此引擎需要完整版，請依視窗指示升級", RED)
+            return
 
         # whisper.cpp 需要外部的 whisper-cli；沒裝就跳教學引導（含可一鍵複製的安裝指令），不硬跑
         if engine in ("whispercpp", "whispercpp_diar") and not _resolve_whispercpp_binary():
@@ -3332,6 +3371,71 @@ class TranscribeApp:
             self.loaded_file_label.configure(text_color=ACCENT)
         except Exception:
             pass
+
+    def _show_needs_full_guide(self, engine):
+        """輕量版選到需要 torch 的引擎（尤其說話人辨識）時，教使用者怎麼升級成完整版。"""
+        is_mac = sys.platform == "darwin"
+        is_diar = engine in ("whisperx", "whispercpp_diar")
+        feat = "說話人辨識（標記「誰說了哪句」）" if is_diar else "這個辨識引擎"
+        # Mac 雙擊安裝檔；Windows 用指令
+        if is_mac:
+            action = "雙擊專案資料夾裡的「install-full.command」"
+            cmd = "source venv/bin/activate && pip install -r requirements.txt"
+        else:
+            action = "雙擊專案資料夾裡的「install-full.bat」"
+            cmd = "venv\\Scripts\\activate && pip install -r requirements.txt"
+
+        win = ctk.CTkToplevel(self.root)
+        win.title("這個功能需要「完整版」")
+        win.configure(fg_color=BG)
+        win.resizable(False, False)
+        win.grab_set()
+        ctk.CTkLabel(
+            win, justify="left", fg_color="transparent", text_color=TEXT,
+            font=ctk.CTkFont(FONT_UI, 15, weight="bold"),
+            text=f"{feat}需要「完整版」才能使用",
+        ).pack(anchor="w", padx=22, pady=(20, 2))
+        ctk.CTkLabel(
+            win, justify="left", fg_color="transparent", text_color=SUBTEXT,
+            font=ctk.CTkFont(FONT_UI, 13), wraplength=470,
+            text="你這台目前裝的是「輕量版」（適合 MacBook Air，只做逐字稿與 AI 摘要，"
+                 "省下好幾 GB 空間）。要用到說話人辨識，需要多裝一組較大的元件（torch）。",
+        ).pack(anchor="w", padx=22, pady=(0, 12))
+        ctk.CTkLabel(
+            win, justify="left", fg_color="transparent", text_color=TEXT,
+            font=ctk.CTkFont(FONT_UI, 13),
+            text=f"升級方法：{action}，裝完重開 VoxLog 即可。",
+        ).pack(anchor="w", padx=22, pady=(0, 6))
+        ctk.CTkLabel(
+            win, justify="left", fg_color="transparent", text_color=SUBTEXT,
+            font=ctk.CTkFont(FONT_UI, 12), wraplength=470,
+            text="（進階：也可在終端機／PowerShell 進到專案資料夾，執行下面這行）",
+        ).pack(anchor="w", padx=22, pady=(0, 6))
+        box = ctk.CTkFrame(win, fg_color=SURFACE, corner_radius=8)
+        box.pack(fill="x", padx=22)
+        ctk.CTkLabel(box, text=cmd, fg_color="transparent", text_color=ACCENT,
+                     font=ctk.CTkFont("Menlo", 13, weight="bold"),
+                     anchor="w", wraplength=340, justify="left").pack(side="left", padx=12, pady=10)
+
+        def _copy():
+            self.root.clipboard_clear()
+            self.root.clipboard_append(cmd)
+            copy_btn.configure(text="已複製 ✓")
+
+        copy_btn = ctk.CTkButton(box, text="複製指令", width=92, command=_copy,
+                                 fg_color=ACCENT, hover_color="#2980B9", text_color="white",
+                                 font=ctk.CTkFont(FONT_UI, 13))
+        copy_btn.pack(side="right", padx=8, pady=7)
+        if is_diar:
+            ctk.CTkLabel(
+                win, justify="left", fg_color="transparent", text_color=SUBTEXT,
+                font=ctk.CTkFont(FONT_UI, 12), wraplength=470,
+                text="＊只要逐字稿、不需要分辨誰在說話的話，維持輕量版、用「whisper.cpp」就可以了。",
+            ).pack(anchor="w", padx=22, pady=(12, 0))
+        ctk.CTkButton(win, text="知道了", width=110, command=win.destroy,
+                      fg_color=ACCENT, hover_color="#2980B9", text_color="white",
+                      font=ctk.CTkFont(FONT_UI, 13)).pack(pady=(16, 20))
+        win.transient(self.root)
 
     def _show_whispercpp_guide(self):
         """選了 whisper.cpp 但沒裝 whisper-cli 時，跳教學引導（含可一鍵複製的安裝指令）。"""

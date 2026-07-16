@@ -26,12 +26,29 @@ VoxLog 是一個具備圖形化介面 (GUI) 的語音轉文字與 AI 輔助處�
 
 ## 🚀 快速開始
 
-| 平台 | 圖文安裝指南（每段都有複製鈕） | 一鍵啟動 |
-|------|--------------------------------|----------|
-| 🍎 macOS | 用瀏覽器開 [`MACOS_SETUP.html`](MACOS_SETUP.html) | 之後打 `voxlog` |
-| 🪟 Windows | 用瀏覽器開 [`WINDOWS_SETUP.html`](WINDOWS_SETUP.html) | 雙擊 `VoxLog.bat` |
+### 先選版本（依你的電腦）
 
-> 想了解每個版本改了什麼，看 [CHANGELOG.md](CHANGELOG.md)。下面是純文字版的完整步驟。
+| 版本 | 適合 | 功能 | 大小 |
+|------|------|------|------|
+| 🪶 **輕量版** | MacBook Air、記憶體 8GB 的機器 | 逐字稿 ＋ AI 摘要（用 whisper.cpp） | 小，安裝快 |
+| 🧰 **完整版** | 要**分辨「誰說了哪句」**（說話人辨識）的人 | 輕量版全部 ＋ 說話人辨識 | 大幾 GB |
+
+> 只是想把錄音變成文字、做會議摘要 → **輕量版就夠**。之後想升級成完整版，隨時可以（雙擊 `install-full.command` 即可，不用重來）。
+
+### 🍎 macOS：雙擊安裝（推薦，不用開終端機）
+
+1. 取得專案資料夾（用 `git clone`，或請對方把整包壓縮檔給你、解壓縮）
+2. **雙擊** `install-lite.command`（完整版就雙擊 `install-full.command`）→ 等它自動裝完
+3. 之後**雙擊 `voxlog`** 啟動；要更新就**雙擊 `update.command`**
+
+> 💡 全程不用打任何指令。第一次可能會跳 Apple 的「安裝命令列工具」小視窗，按一下 Install 即可。
+> 若雙擊時被 macOS 擋（「無法打開，來自未識別的開發者」），改成**對檔案按右鍵 →「打開」**一次即可。
+
+### 🪟 Windows：一鍵啟動
+
+用瀏覽器開 [`WINDOWS_SETUP.html`](WINDOWS_SETUP.html) 照圖文步驟裝，之後雙擊 `VoxLog.bat` 啟動。
+
+> 想了解每個版本改了什麼，看 [CHANGELOG.md](CHANGELOG.md)。下面是**手動安裝**的完整步驟（雙擊安裝失敗、或想自己一步步來時用）。
 
 ## 系統需求
 - **FFmpeg**（用於處理音訊與影片格式轉換）
@@ -43,13 +60,17 @@ VoxLog 是一個具備圖形化介面 (GUI) 的語音轉文字與 AI 輔助處�
 > [`MACOS_SETUP.html`](MACOS_SETUP.html)（Mac）或 [`WINDOWS_SETUP.html`](WINDOWS_SETUP.html)（Windows），
 > 每段指令都有複製鈕，照著做即可。下面是純文字版步驟。
 
-## 安裝與設定說明
+## 手動安裝與設定說明（進階）
 
-### 🍎 macOS
+> 一般使用者請用上面的**雙擊安裝**即可，不需要這一段。以下是想自己一步步來、
+> 或雙擊安裝失敗時的手動步驟。
+
+### 🍎 macOS（手動）
 
 > ⚠️ **Mac 使用者請務必先讀本節最後的「macOS 注意事項 / 疑難排解」。**
 > macOS 在這個 AI 語音專案上有幾個必踩的坑（系統內建 Python 會讓 GUI 崩潰、
 > 部分套件與最新版 macOS / FFmpeg 不相容），照下面步驟可一次避開。
+> （這些坑，上面的 `install-lite.command` / `install-full.command` 都會自動幫你處理掉。）
 
 1. **下載專案**
    ```bash
@@ -210,8 +231,11 @@ VoxLog 是一個具備圖形化介面 (GUI) 的語音轉文字與 AI 輔助處�
 
 ## 之後怎麼啟動 / 更新
 
-- **啟動**：裝好後，Mac 在終端機打 `voxlog`、Windows 雙擊 `VoxLog.bat` 即可，不必每次重打那串指令。
-- **更新到最新版**：`git pull`（或重新下載 ZIP 覆蓋）後，重跑一次 `pip install -r requirements.txt` 補裝可能新增的套件，再啟動即可。詳見兩份安裝指南的「🔄 之後怎麼更新到最新版」。
+- **啟動**：Mac 雙擊 `voxlog`（或終端機打 `voxlog`）、Windows 雙擊 `VoxLog.bat`，不必每次重打那串指令。
+- **更新到最新版**：
+  - 🍎 Mac：**雙擊 `update.command`** —— 它會自動 `git pull` 並判斷你是輕量／完整版、補裝新套件。
+  - 🪟 Windows：`git pull` 後重跑 `pip install -r requirements.txt`（或 `requirements-lite.txt`）。
+  - 你的 API Key 設定與已下載的模型都不會被覆蓋。
 
 ## 其他文件
 - [`CHANGELOG.md`](CHANGELOG.md) — 每個版本改了什麼

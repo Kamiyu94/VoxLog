@@ -56,6 +56,19 @@
     border-radius:14px; padding:16px 16px 4px; margin:10px 0 4px;
   }
 
+  /* 版本選擇卡 */
+  .pick{display:flex; gap:12px; flex-wrap:wrap; margin:14px 0;}
+  .pick .opt{
+    flex:1 1 260px; background:var(--surface2); border:1px solid var(--border);
+    border-radius:14px; padding:16px;
+  }
+  .pick .opt h4{margin:0 0 6px; font-size:16px; color:#fff;}
+  .pick .opt .file{
+    display:inline-block; margin-top:8px; font-family:"SF Mono",Consolas,monospace;
+    font-size:13px; color:var(--accent); background:#161616;
+    border:1px solid var(--border); border-radius:8px; padding:4px 9px;
+  }
+
   /* 程式碼區塊 + 複製鈕 */
   .code{
     position:relative; background:#161616; border:1px solid var(--border);
@@ -114,7 +127,7 @@
   .toc a:last-child{border-bottom:none;}
   .toc a .n{color:var(--accent); font-weight:700; margin-right:10px;}
 
-  /* 疑難排解折疊 */
+  /* 折疊區 */
   details{
     background:var(--surface2); border:1px solid var(--border);
     border-radius:12px; margin:12px 0; overflow:hidden;
@@ -143,135 +156,75 @@
 
 <div class="wrap">
 
-  <p class="muted">Mac 版沒有「雙擊一個檔案」那麼自動,需要在<strong>「終端機」</strong>貼幾行指令。別緊張 —— 每段都有<strong>複製鈕</strong>,照順序貼上、按 Enter 就好。整個流程約 5 個步驟。</p>
+  <p class="muted">好消息:Mac 現在也能像 Windows 一樣<strong>「雙擊安裝」</strong>了 —— 不用再一行行貼終端機指令。照下面三步,大約幾分鐘就裝好。</p>
 
+  <!-- 先選版本 -->
+  <h2 id="pick"><span class="num">0</span>先選一個版本</h2>
+  <div class="pick">
+    <div class="opt">
+      <h4>🪶 輕量版</h4>
+      <p class="muted" style="margin:4px 0;">MacBook Air、記憶體 8GB 的機器。做<strong>逐字稿 ＋ AI 摘要</strong>,小又快。</p>
+      <span class="file">install-lite.command</span>
+    </div>
+    <div class="opt">
+      <h4>🧰 完整版</h4>
+      <p class="muted" style="margin:4px 0;">要分辨<strong>「誰說了哪句」</strong>(說話人辨識)才用。多裝約 2GB。</p>
+      <span class="file">install-full.command</span>
+    </div>
+  </div>
   <div class="note tip">
-    <span class="ic">⌨️ 怎麼打開「終端機」?</span>按 <kbd>⌘ Command</kbd>+<kbd>空白鍵</kbd> 叫出 Spotlight,輸入 <strong>Terminal</strong> 或 <strong>終端機</strong>,按 Enter。之後的指令都貼進這個黑視窗。
-  </div>
-
-  <div class="toc">
-    <a href="#s1"><span class="n">1</span>安裝 Homebrew(套件管家)</a>
-    <a href="#s2"><span class="n">2</span>裝 Python 與 FFmpeg</a>
-    <a href="#s3"><span class="n">3</span>下載專案</a>
-    <a href="#s4"><span class="n">4</span>建立環境並啟動</a>
-    <a href="#s5"><span class="n">5</span>填 API Key 開始用</a>
-    <a href="#update"><span class="n">🔄</span>之後怎麼更新到最新版</a>
-    <a href="#trouble"><span class="n">⚠</span>遇到問題?(疑難排解)</a>
-  </div>
-
-  <div class="note warn">
-    <span class="ic">❓ 為什麼 Mac 比 Windows 麻煩?</span>VoxLog 原本是在 <strong>Windows</strong> 上開發的,搬到 Mac 會撞到「系統內建 Python 太舊讓程式閃退」「新版 macOS 跟某些 AI 套件不合」等問題。下面步驟已經幫你避開大部分的坑;<strong>只有第一次安裝會遇到</strong>,裝好就一勞永逸。
+    <span class="ic">💡 不確定選哪個?</span>只是想把錄音變文字、做會議摘要 → <strong>選輕量版就好</strong>。之後想升級成完整版,隨時雙擊 <code>install-full.command</code> 即可,<strong>不用重來</strong>。
   </div>
 
   <!-- 1 -->
-  <h2 id="s1"><span class="num">1</span>安裝 Homebrew(套件管家)</h2>
-  <p>Homebrew 是 Mac 上幫你裝軟體的工具。<strong>先確認有沒有裝過</strong> —— 在終端機貼這行:</p>
-  <div class="code">
-    <button class="copy">複製</button>
-    <pre>brew --version</pre>
-  </div>
-  <p class="muted">有跳出版本號(例如 <code>Homebrew 4.x</code>)→ 你已經裝過,<strong>直接跳到步驟 2</strong>。<br>顯示「command not found」→ 貼下面這行安裝(會問你密碼,輸入時看不到字是正常的):</p>
-  <div class="code">
-    <button class="copy">複製</button>
-    <pre>/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"</pre>
-  </div>
-  <div class="note tip">
-    <span class="ic">⏳</span>安裝中途會<strong>停住、游標不動好幾分鐘</strong>(在下載開發者工具),<strong>這是正常的,別關</strong>。若彈出一個小視窗問要不要裝「命令列工具」,按 <strong>Install</strong> 等它跑完。
-  </div>
-
-  <h3>接著一定要做這步:讓系統認得 brew</h3>
-  <p class="muted">裝完先別急著下一步。Homebrew 雖然裝好了,但<strong>系統還不知道去哪找它</strong>,這時候打 <code>brew</code> 會說「找不到」。把下面<strong>這一整段</strong>複製貼上、按 Enter,就接上了(不會有任何訊息是正常的):</p>
-  <div class="code">
-    <button class="copy">複製</button>
-    <pre>echo >> ~/.zprofile
-echo 'eval "$(/opt/homebrew/bin/brew shellenv)"' >> ~/.zprofile
-eval "$(/opt/homebrew/bin/brew shellenv)"</pre>
-  </div>
-  <p class="muted">然後再貼一次 <code>brew --version</code> 驗證 —— <strong>這次有跳出版本號(例如 <code>Homebrew 5.x</code>)就成功了</strong>,可以往步驟 2。以後開新終端機都會自動生效,不用再貼。</p>
+  <h2 id="s1"><span class="num">1</span>取得 VoxLog 資料夾</h2>
+  <p><strong>最建議:請對方(Kris)把整包壓縮檔傳給你</strong> → 雙擊解壓縮 → 把 <strong>VoxLog 資料夾</strong>拖到你想放的地方(例如「文件」)。這種方式之後可以「一鍵更新」。</p>
   <div class="note warn">
-    <span class="ic">❗ 為什麼要這一步?</span>這是 <strong>Apple Silicon(M1/M2/M3… 晶片)Mac 最常卡住的地方</strong>:brew 明明裝好了,打 <code>brew --version</code> 卻說「command not found」。原因就是上面這段沒做 —— 它的作用是把 brew 的位置加進系統的搜尋名單。<strong>貼完上面那段就能解決。</strong>
+    <span class="ic">📁</span>記住 <strong>VoxLog 資料夾</strong>放哪、<strong>別把裡面的檔案拆開搬</strong>,整包要待在一起。
   </div>
-
-  <!-- 2 -->
-  <h2 id="s2"><span class="num">2</span>裝 Python 與 FFmpeg</h2>
-  <p>一行指令裝齊四樣東西:正確版本的 Python、它的圖形介面元件、處理音訊的 FFmpeg,以及輕量辨識引擎 whisper.cpp。</p>
-  <div class="code">
-    <button class="copy">複製</button>
-    <pre>brew install python@3.11 python-tk@3.11 ffmpeg whisper-cpp</pre>
-  </div>
-  <div class="note tip">
-    <span class="ic">💡 whisper.cpp 是給 MacBook Air 用的</span>MacBook Air / 8GB 記憶體的機器,VoxLog 第一次開啟會自動把辨識引擎選成「whisper.cpp」(輕、不吃記憶體)。所以這台一定要裝好它(已包含在上面那行)。辨識模型會在第一次轉錄時自動下載,不用手動處理。
-  </div>
-  <div class="note warn">
-    <span class="ic">❗ 為什麼指定 3.11?</span>Mac 系統內建的 Python 是舊版,直接拿來跑 VoxLog 的圖形介面<strong>會一開就閃退</strong>。所以一定要用 Homebrew 這個 <code>python@3.11</code>,後面建環境時也要用它。
-  </div>
-  <div class="note tip">
-    <span class="ic">⏳</span>FFmpeg 有點大,這步可能要等一兩分鐘,屬正常。
-  </div>
-
-  <!-- 3 -->
-  <h2 id="s3"><span class="num">3</span>下載專案</h2>
-  <p><strong>最簡單(免裝 git):</strong></p>
-  <p class="muted">打開 <a href="https://github.com/Kamiyu94/VoxLog" target="_blank" rel="noopener">GitHub 專案頁</a> → 綠色 <kbd>&lt;&gt; Code</kbd> 按鈕 → <kbd>Download ZIP</kbd> → 在「下載項目」裡<strong>雙擊解壓縮</strong>,把 <strong>VoxLog 資料夾</strong>拖到你想放的地方(例如「文件」)。</p>
-  <div class="note warn">
-    <span class="ic">📁</span>記住這個 <strong>VoxLog 資料夾</strong>放哪、<strong>別把裡面的檔案拆開搬</strong>。整包要待在一起。
-  </div>
-  <p class="muted" style="margin-top:14px;"><strong>(進階)有裝 git 的話:</strong></p>
+  <p class="muted" style="margin-top:14px;"><strong>(進階)會用 git 的話</strong>,打開終端機貼這行 clone 下來(之後更新最順):</p>
   <div class="code">
     <button class="copy">複製</button>
     <pre>git clone https://github.com/Kamiyu94/VoxLog.git</pre>
   </div>
 
+  <!-- 2 -->
+  <h2 id="s2"><span class="num">2</span>雙擊安裝檔</h2>
+  <p>打開 VoxLog 資料夾,<strong>雙擊你要的那個安裝檔</strong>:</p>
+  <div class="card">
+    <p style="margin:6px 0;">🪶 輕量版 → 雙擊 <span class="big">install-lite.command</span></p>
+    <p style="margin:6px 0;">🧰 完整版 → 雙擊 <span class="big">install-full.command</span></p>
+  </div>
+  <p class="muted">會跳出一個黑視窗自動安裝(裝 Homebrew、Python、FFmpeg、套件…全自動)。<strong>看到「✅ 安裝完成!」就好了</strong>,可以關掉視窗。第一次可能要等幾分鐘。</p>
+
+  <div class="note warn">
+    <span class="ic">🔐 若雙擊被 macOS 擋住</span>出現「無法打開,因為它來自未識別的開發者」→ <strong>對著那個檔案按右鍵 → 選「打開」→ 再按一次「打開」</strong>。只要做這一次,之後就正常。
+  </div>
+  <div class="note tip">
+    <span class="ic">⏳ 中途「卡住不動」是正常的</span>安裝過程會停在下載畫面好幾分鐘(在抓開發者工具/套件),<strong>別關視窗</strong>。若彈出 Apple 的「安裝命令列工具」小視窗,按 <strong>Install</strong> 等它跑完即可。
+  </div>
+  <div class="note tip">
+    <span class="ic">🔑 需要輸入密碼?</span>安裝 Homebrew 時可能會問<strong>這台電腦的登入密碼</strong>。輸入時<strong>畫面不會顯示任何字(連圓點都沒有),這是正常的</strong>,打完按 Enter 就好。
+  </div>
+
+  <!-- 3 -->
+  <h2 id="s3"><span class="num">3</span>啟動 VoxLog</h2>
+  <p>安裝完成後,回到 VoxLog 資料夾,<strong>雙擊 <span class="big">voxlog</span></strong> 就會打開 App。</p>
+  <div class="note tip">
+    <span class="ic">⭐ 以後開 VoxLog</span>每次要用,就<strong>雙擊資料夾裡的 <code>voxlog</code></strong>。安裝時也順手設好了終端機指令,想的話在任何地方打開終端機打一個字 <code>voxlog</code> 也能開。
+  </div>
+
   <!-- 4 -->
-  <h2 id="s4"><span class="num">4</span>建立環境並啟動</h2>
-  <p>先用終端機<strong>進到 VoxLog 資料夾</strong>。最省事的方法:在終端機輸入 <code>cd</code> 加一個空格,然後<strong>把 VoxLog 資料夾從 Finder 拖進終端機視窗</strong>(會自動填路徑),再按 Enter。</p>
-  <div class="code">
-    <button class="copy">複製</button>
-    <pre>cd </pre>
-  </div>
-  <p class="muted">(上面複製到的是 <code>cd</code> 加空格;貼上後拖資料夾進來再按 Enter。)</p>
-
-  <p style="margin-top:18px;">進到資料夾後,把<strong>這一整段</strong>複製、貼上、按 Enter。它會建立獨立環境、裝好套件、<strong>設定好 <code>voxlog</code> 快速啟動指令</strong>、然後打開 VoxLog。<strong>MacBook Air／一般筆電用這個輕量版就好</strong>(輕、快、不會踩到下面的疑難排解):</p>
-  <div class="code">
-    <button class="copy">複製</button>
-    <pre>/opt/homebrew/bin/python3.11 -m venv venv
-source venv/bin/activate
-pip install -r requirements-lite.txt
-chmod +x voxlog
-ln -sf "$PWD/voxlog" /opt/homebrew/bin/voxlog
-python transcribe_gui.py</pre>
-  </div>
-  <div class="note tip">
-    <span class="ic">🪶 為什麼用輕量版</span>它只裝「whisper.cpp 辨識 + 雲端 AI」需要的東西,<strong>不裝 torch 那幾 GB</strong>,所以又小又快,也避開下面 ②③ 的安裝坑。辨識引擎 VoxLog 第一次開會自動幫 MacBook Air 選成 whisper.cpp,模型在第一次轉錄時自動下載。<br>(只想用這個的話,下面「裝 whisper.cpp 引擎」那步也別忘了:<code>brew install whisper-cpp</code>,已包含在第 2 步。)
-  </div>
-  <div class="note warn">
-    <span class="ic">🧰 需要「聲紋說話人分離(WhisperX)」或有 NVIDIA 顯卡?</span>才改用完整版(會多下載 <strong>約 2GB</strong> 的 torch,且 macOS 上可能要處理下面 ②③④):
-    <div class="code" style="margin-top:10px;">
-      <button class="copy">複製</button>
-      <pre>pip install -r requirements.txt</pre>
-    </div>
-    第一次很久很正常,畫面在跑文字<strong>不是當機</strong>,中途別關。
-  </div>
-  <div class="note tip">
-    <span class="ic">⭐ 以後開 VoxLog 超簡單</span>上面那段已經幫你設好 <code>voxlog</code> 指令了。以後<strong>在任何地方</strong>打開終端機,只要打一個字:
-    <div class="code" style="margin-top:10px;">
-      <button class="copy">複製</button>
-      <pre>voxlog</pre>
-    </div>
-    <p class="muted" style="margin-top:6px;">就會自動進資料夾、啟用環境、開啟 App,不用重裝、不用 <code>cd</code>。<br>(若哪天 <code>voxlog</code> 沒反應,也可手動:<code>cd</code> 進資料夾後貼 <code>source venv/bin/activate</code> 再 <code>python transcribe_gui.py</code>。)</p>
-  </div>
-  <div class="note warn">
-    <span class="ic">😵 如果這步「程式一閃就關」或出現一堆紅字</span>多半是撞到 Mac 的已知坑。往下看 <a href="#trouble">⚠️ 疑難排解</a>,對照 ①②③ 解決。
-  </div>
-
-  <!-- 5 -->
-  <h2 id="s5"><span class="num">5</span>填 API Key 開始用</h2>
+  <h2 id="s4"><span class="num">4</span>填 API Key 開始用</h2>
   <div class="card">
     <p style="margin-top:4px;">程式打開後會<strong>自動建立設定檔</strong>,你不用碰任何檔案。在介面上:</p>
     <p>① 選 AI 引擎(<strong>ChatGPT / Gemini / Claude</strong>)<br>
        ② 在 Key 欄位<strong>貼上 API Key</strong>(跟 Kris 拿,或照下面自己申請)<br>
        ③ 按 <strong>「驗證」</strong>,變綠就成功(會自動存檔)<br>
        ④ 載入音檔或 <strong>.md / 逐字稿</strong> → 開始轉錄、校正、產生摘要</p>
+  </div>
+  <div class="note tip">
+    <span class="ic">🗣️ 輕量版看到辨識引擎有些選項是灰的(🔒)?</span>那些(含「說話人辨識」)要完整版才有。要用的話,雙擊資料夾裡的 <code>install-full.command</code> 升級後重開 App 即可 —— App 裡點到時也會跳出同樣的說明。只要逐字稿、不需要分辨誰在說話,維持輕量版、用「whisper.cpp」就好。
   </div>
 
   <h3>怎麼自己申請 Gemini API Key(免費)</h3>
@@ -284,100 +237,115 @@ python transcribe_gui.py</pre>
   <div class="note warn">
     <span class="ic">❗ 一定要從這個網址拿</span>要的是 <strong>Google AI Studio</strong> 的 API Key —— 開頭是 <code>AIza</code> 或 <code>AQ.</code> 都正常(<code>AQ.</code> 是 2026 的新格式)。<strong>不要</strong>拿成 Google Cloud Console「憑證」裡的 OAuth(<code>ya29.</code>/<code>GOCSPX-</code>),那種驗證會出現 <code>401 ... Expected OAuth 2 access token</code> 的錯誤。
   </div>
-  <div class="note tip">
-    <span class="ic">📋 複製後想先確認 key 是好的?</span>把網址 <code>https://generativelanguage.googleapis.com/v1beta/models?key=你的KEY</code> 的「你的KEY」換掉,貼到瀏覽器按 Enter —— 跳出一堆模型清單就是有效。<br>
-    <strong>貼進 VoxLog 後若驗證仍失敗</strong>,多半是貼上時沒貼完整:點欄位 → 把舊內容<strong>整個刪乾淨</strong> → 重新貼一次。
-  </div>
   <p class="muted" style="margin-top:12px;">(想用 ChatGPT 或 Claude 的話,key 分別在 <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener">platform.openai.com/api-keys</a>、<a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">console.anthropic.com</a> 申請,作法類似。)</p>
 
   <div class="check">
-    <b>✓ 完成!</b> 之後每次要用,在終端機打一個字 <code>voxlog</code> 就能開,不必再重裝。
+    <b>✓ 完成!</b> 之後每次要用,雙擊資料夾裡的 <code>voxlog</code> 就能開,不必再重裝。
   </div>
 
   <!-- 更新 -->
   <hr>
   <h2 id="update"><span class="num" style="background:var(--green);">🔄</span>之後怎麼更新到最新版</h2>
-  <p>VoxLog 有改版時,用 <strong>git</strong> 一行就能更新,<strong>不會動到你的 API Key 與已裝好的環境</strong>。</p>
-
-  <h3>① 先確認有沒有 git</h3>
-  <div class="code">
-    <button class="copy">複製</button>
-    <pre>git --version</pre>
+  <p>VoxLog 有改版時,回到 VoxLog 資料夾,<strong>雙擊 <span class="big">update.command</span></strong> 就好。</p>
+  <p class="muted">它會自動抓最新程式碼、判斷你裝的是輕量版還完整版、補裝新套件。<strong>你的 API Key 設定和已下載的模型都不會被覆蓋。</strong>看到「✅ 更新完成!」就可以雙擊 <code>voxlog</code> 重開。</p>
+  <div class="note warn">
+    <span class="ic">⚠️ 雙擊 update 說「這不是 git 版本,無法自動更新」?</span>代表你當初是用 GitHub 的「Download ZIP」下載的(那種抓不到更新機制)。<strong>最簡單:請 Kris 重給你一份能更新的整包</strong>;或改用步驟 1 的 <code>git clone</code> 版本。<br>(會 git 的話,也可進資料夾後貼下面這段接上線上專案,只做一次;之後 <code>update.command</code> 就能用。)
   </div>
-  <p class="muted">有跳出版本號 → 已內建(裝 Homebrew 時通常會一起裝),跳到 ②。<br>顯示沒有 → 貼這行裝它:</p>
-  <div class="code">
-    <button class="copy">複製</button>
-    <pre>brew install git</pre>
-  </div>
-
-  <h3>② 第一次:把資料夾接上 git(只做一次)</h3>
-  <p class="muted">如果你當初是用「Download ZIP」下載的,先<strong>進到 VoxLog 資料夾</strong>(<code>cd</code> + 拖資料夾),貼這一整段把它接到線上專案:</p>
-  <div class="code">
-    <button class="copy">複製</button>
-    <pre>git init
+  <details>
+    <summary>把「Download ZIP」版本接上 git(進階,只做一次)</summary>
+    <div class="body">
+      <p class="muted"><strong>進到 VoxLog 資料夾</strong>(<code>cd</code> + 拖資料夾),貼這一整段:</p>
+      <div class="code">
+        <button class="copy">複製</button>
+        <pre>git init
 git remote add origin https://github.com/Kamiyu94/VoxLog.git
 git fetch origin
 git reset --hard origin/main
 git branch -M main</pre>
-  </div>
+      </div>
+      <p class="muted">你的 <code>config.json</code>(API Key)和 <code>venv</code>(環境)都<strong>不會被覆蓋</strong>。之後更新雙擊 <code>update.command</code> 即可。</p>
+    </div>
+  </details>
+
+  <!-- 手動安裝(進階) -->
+  <hr>
+  <h2 id="manual"><span class="num" style="background:var(--subtext);">⚙</span>手動安裝(進階,或雙擊失敗時)</h2>
+  <p class="muted">一般人用上面的雙擊安裝就好,<strong>不需要看這段</strong>。以下是想自己一步步來、或雙擊安裝失敗時的終端機步驟。</p>
   <div class="note tip">
-    <span class="ic">🔒</span>你的 <code>config.json</code>(API Key)和 <code>venv</code>(已下載約 2GB 的環境)都<strong>不會被覆蓋</strong>,放心。<br>(當初是用 <code>git clone</code> 下載的人不用做這步。)
+    <span class="ic">⌨️ 怎麼打開「終端機」?</span>按 <kbd>⌘ Command</kbd>+<kbd>空白鍵</kbd> 叫出 Spotlight,輸入 <strong>Terminal</strong> 或 <strong>終端機</strong>,按 Enter。
   </div>
 
-  <h3>③ 以後每次更新</h3>
-  <p class="muted">進到 VoxLog 資料夾,貼:</p>
-  <div class="code">
-    <button class="copy">複製</button>
-    <pre>git pull</pre>
-  </div>
-  <p class="muted">接著啟用環境、補裝可能新增的套件(這步很快,沒新套件也不會有壞處)。<strong>當初用哪個版本裝的,就用哪個</strong>:</p>
-  <div class="code">
-    <button class="copy">複製</button>
-    <pre>source venv/bin/activate
-pip install -r requirements-lite.txt   # 輕量版(MacBook Air)</pre>
-  </div>
-  <p class="muted" style="margin-top:6px;">完整版的人改用 <code>pip install -r requirements.txt</code>。更新完打 <code>voxlog</code> 重開 App 即可。</p>
+  <details>
+    <summary>展開手動安裝步驟</summary>
+    <div class="body">
+      <h3>① 安裝 Homebrew(套件管家)</h3>
+      <p class="muted">先確認有沒有裝過 —— 貼 <code>brew --version</code>。有版本號就跳到 ②;顯示 command not found 就貼:</p>
+      <div class="code">
+        <button class="copy">複製</button>
+        <pre>/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"</pre>
+      </div>
+      <p class="muted">裝完(Apple Silicon)要讓系統認得 brew,貼這一整段:</p>
+      <div class="code">
+        <button class="copy">複製</button>
+        <pre>echo >> ~/.zprofile
+echo 'eval "$(/opt/homebrew/bin/brew shellenv)"' >> ~/.zprofile
+eval "$(/opt/homebrew/bin/brew shellenv)"</pre>
+      </div>
 
-  <div class="note tip">
-    <span class="ic">✨ 這次更新有什麼新東西?</span>
-    <ul style="margin:6px 0 0; padding-left:20px;">
-      <li><strong>貼 API Key 不再出錯:</strong>Key 欄位現在「貼上=整段取代並自動去除前後空白」,不會再把舊殘值黏成壞字串(之前 Gemini 一直 401 的元兇)。直接在 App 裡貼 Key 就會通,不用再手動編 <code>config.json</code>。</li>
-      <li><strong>完成後自動開檔:</strong>逐字稿、AI 校正、摘要做完會自動用系統預設程式打開給你看,不用自己去資料夾找。</li>
-      <li><strong>摘要改成 Word 檔(.docx):</strong>「產生摘要」現在直接輸出 <code>_摘要.docx</code>,Word / Pages 直接開,標題、清單、待辦表格都排好。</li>
-      <li><strong>低階機器更穩:</strong>預設轉錄模型改為較省記憶體的 <code>small</code>,8GB 的 Mac 不會一跑就閃退(要更高精度再手動選 <code>medium</code>/<code>large</code>)。</li>
-    </ul>
-    <p style="margin:6px 0 0;">⚠️ 因為這次新增了產生 Word 檔的套件,<strong>更新後請務必跑上面那行 <code>pip install -r requirements.txt</code></strong>,否則「產生摘要」會失敗。</p>
-  </div>
+      <h3>② 裝 Python 與 FFmpeg</h3>
+      <div class="code">
+        <button class="copy">複製</button>
+        <pre>brew install python@3.11 python-tk@3.11 ffmpeg whisper-cpp</pre>
+      </div>
+      <p class="muted">Mac 系統內建的 Python 太舊,拿來跑 GUI 會一開就閃退,所以一定要用 Homebrew 的 <code>python@3.11</code>。</p>
+
+      <h3>③ 下載專案</h3>
+      <p class="muted">見上面「步驟 1」。用 <code>git clone</code> 或請對方給整包壓縮檔。</p>
+
+      <h3>④ 建立環境並啟動</h3>
+      <p class="muted">先 <code>cd</code> 進 VoxLog 資料夾(<code>cd</code> 加空格,再把資料夾從 Finder 拖進終端機,按 Enter)。然後<strong>輕量版</strong>貼這段:</p>
+      <div class="code">
+        <button class="copy">複製</button>
+        <pre>/opt/homebrew/bin/python3.11 -m venv venv
+source venv/bin/activate
+pip install -r requirements-lite.txt
+chmod +x voxlog
+ln -sf "$PWD/voxlog" /opt/homebrew/bin/voxlog
+python transcribe_gui.py</pre>
+      </div>
+      <p class="muted"><strong>完整版</strong>(要說話人辨識)把上面的 <code>requirements-lite.txt</code> 換成 <code>requirements.txt</code>,並照下面 ②③ 疑難排解各跑一次修補。</p>
+    </div>
+  </details>
 
   <!-- 疑難排解 -->
   <hr>
   <h2 id="trouble"><span class="num" style="background:var(--amber);">⚠</span>遇到問題?(疑難排解)</h2>
-  <p class="muted">下面幾個是搬到 Mac <strong>第一次安裝才會踩</strong>的坑。<strong>沒遇到就不用理它</strong>;遇到了再對照症狀展開來看。</p>
+  <p class="muted">下面幾個是搬到 Mac <strong>第一次安裝才會踩</strong>的坑。<strong>用雙擊安裝的話,②③ 已經自動幫你處理掉了</strong>,通常不會遇到;手動安裝、或真的卡住再對照展開。</p>
 
   <details>
     <summary>① 程式一開就閃退 / SIGABRT<span class="tag">最常見</span></summary>
     <div class="body">
-      <p><strong>症狀:</strong>執行最後一行後,視窗一閃就消失,或報 <code>EXC_CRASH / SIGABRT</code>。</p>
-      <p><strong>原因:</strong>用到了 Mac 系統內建的舊 Python(連到太舊的繪圖元件 Tcl/Tk)。</p>
-      <p><strong>解法:</strong>確認步驟 4 的第一行是用 <code>/opt/homebrew/bin/python3.11</code> 來建環境(<strong>不是</strong>只打 <code>python3</code>)。若先前建錯了,刪掉重來:</p>
+      <p><strong>症狀:</strong>雙擊 <code>voxlog</code> 後視窗一閃就消失,或報 <code>EXC_CRASH / SIGABRT</code>。</p>
+      <p><strong>原因:</strong>環境被建到了 Mac 系統內建的舊 Python(連到太舊的繪圖元件 Tcl/Tk)。</p>
+      <p><strong>解法:</strong>重跑一次安裝檔(<code>install-lite.command</code> 或 <code>install-full.command</code>)即可 —— 它固定用 Homebrew 的 <code>python@3.11</code> 重建乾淨環境。若要手動:</p>
       <div class="code">
         <button class="copy">複製</button>
         <pre>rm -rf venv
 /opt/homebrew/bin/python3.11 -m venv venv
 source venv/bin/activate
-pip install -r requirements.txt
+pip install -r requirements-lite.txt
 python transcribe_gui.py</pre>
       </div>
     </div>
   </details>
 
   <details>
-    <summary>② 連環境都建不起來(pyexpat 符號錯誤)<span class="tag">看版本</span></summary>
+    <summary>② 連環境都建不起來(pyexpat 符號錯誤)<span class="tag">雙擊已自動修</span></summary>
     <div class="body">
       <p><strong>症狀:</strong><code>python3.11 -m venv</code> 失敗,或紅字出現
       <code>Symbol not found: _XML_SetAllocTrackerActivationThreshold</code>。</p>
       <p><strong>原因:</strong>Homebrew 的 Python 內某個模組連到 Mac 系統舊版的 expat 函式庫,缺了新符號。</p>
-      <p><strong>解法:</strong>裝 Homebrew 版 expat,把該模組改指向它再重新簽章:</p>
+      <p><strong>解法:</strong>雙擊安裝檔會自動處理;要手動的話:</p>
       <div class="code">
         <button class="copy">複製</button>
         <pre>brew install expat
@@ -386,17 +354,16 @@ install_name_tool -change /usr/lib/libexpat.1.dylib /opt/homebrew/opt/expat/lib/
 codesign --force --sign - "$SO"
 /opt/homebrew/bin/python3.11 -c "import pyexpat; print('pyexpat OK')"</pre>
       </div>
-      <p class="muted">看到 <code>pyexpat OK</code> 就修好了,回去重做步驟 4。<br>
-      <strong>⚠️ 日後 <code>brew upgrade</code> 或重裝 python@3.11 後可能要重跑這段一次。</strong></p>
+      <p class="muted">看到 <code>pyexpat OK</code> 就修好了。<strong>⚠️ 日後 <code>brew upgrade</code> 或重裝 python@3.11 後可能要重跑一次(或重跑安裝檔)。</strong></p>
     </div>
   </details>
 
   <details>
-    <summary>③ 語者分離壞掉(torchcodec 找不到 libavutil)<span class="tag">選用</span></summary>
+    <summary>③ 說話人辨識壞掉(torchcodec 找不到 libavutil)<span class="tag">雙擊已自動修</span></summary>
     <div class="body">
-      <p><strong>症狀:</strong>跑「語者分離」時報 <code>libtorchcodec... Library not loaded: @rpath/libavutil.59.dylib</code>。(一般轉錄不受影響,<strong>只有要分辨不同講者時才會壞</strong>。)</p>
+      <p><strong>症狀:</strong>跑「說話人辨識」時報 <code>libtorchcodec... Library not loaded: @rpath/libavutil.59.dylib</code>。(一般轉錄不受影響,<strong>只有要分辨不同講者時才會壞</strong>。)</p>
       <p><strong>原因:</strong>系統 FFmpeg 是 8.x,但負責讀音訊的 torchcodec 只吃 FFmpeg 7。</p>
-      <p><strong>解法:</strong>另外裝 <code>ffmpeg@7</code>(不影響你現有的 FFmpeg 8),把它的函式庫接到 torchcodec 會找的位置:</p>
+      <p><strong>解法:</strong><code>install-full.command</code> 會自動處理;要手動:</p>
       <div class="code">
         <button class="copy">複製</button>
         <pre>brew install ffmpeg@7
@@ -411,19 +378,19 @@ done</pre>
   </details>
 
   <details>
-    <summary>④ 語者分離要怎麼拿 HuggingFace Token?<span class="tag">選用</span></summary>
+    <summary>④ 說話人辨識要怎麼拿 HuggingFace Token?<span class="tag">完整版</span></summary>
     <div class="body">
-      <p>只有要用「<strong>分辨不同講者</strong>」(WhisperX 引擎的語者分離)時才需要,而且 Token <strong>免費</strong>。一般轉錄、做摘要都不用。三步:</p>
+      <p>只有要用「<strong>分辨不同講者</strong>」時才需要,而且 Token <strong>免費</strong>。一般轉錄、做摘要都不用。三步:</p>
       <p><strong>① 註冊 / 登入並產生 Token</strong><br>
-         到 <a href="https://huggingface.co/settings/tokens" target="_blank" rel="noopener">huggingface.co/settings/tokens</a> 註冊(或登入)→ 按 <kbd>Create new token</kbd> → 名稱隨意,<strong>務必勾選 <code>Read access to public gated repositories</code></strong> → 建立後<strong>把那串 token 複製起來</strong>(只會顯示一次)。</p>
+         到 <a href="https://huggingface.co/settings/tokens" target="_blank" rel="noopener">huggingface.co/settings/tokens</a> → 按 <kbd>Create new token</kbd> → 名稱隨意,<strong>務必勾選 <code>Read access to public gated repositories</code></strong> → 建立後<strong>把那串 token 複製起來</strong>(只顯示一次)。</p>
       <p><strong>② 用同一個帳號到下面兩頁按「同意」</strong><br>
          各自進去後點 <kbd>Agree and access repository</kbd>:<br>
          • <a href="https://huggingface.co/pyannote/speaker-diarization-community-1" target="_blank" rel="noopener">pyannote/speaker-diarization-community-1</a><br>
          • <a href="https://huggingface.co/pyannote/segmentation-3.0" target="_blank" rel="noopener">pyannote/segmentation-3.0</a></p>
       <p><strong>③ 貼進 VoxLog</strong><br>
-         打開 App,在「HuggingFace Token」欄位貼上剛剛複製的 token(會自動存進 <code>config.json</code> 的 <code>hf_token</code>)。</p>
+         打開 App,在「HuggingFace Token」欄位貼上 token(會自動存進 <code>config.json</code>)。</p>
       <div class="note warn">
-        <span class="ic">❗ 一定要同意 community-1 那頁</span>VoxLog 實際用的是 <code>speaker-diarization-community-1</code> 這個模型。如果<strong>填了 token 卻還是失敗</strong>,多半是只同意了舊版 <code>3.1</code>、漏了 community-1 —— 回去把上面兩頁都按過同意即可。
+        <span class="ic">❗ 一定要同意 community-1 那頁</span>VoxLog 實際用的是 <code>speaker-diarization-community-1</code>。填了 token 卻還失敗,多半是只同意了舊版 <code>3.1</code>、漏了 community-1。
       </div>
     </div>
   </details>
@@ -434,11 +401,11 @@ done</pre>
       <p><strong>症狀:</strong>在 Key 欄位貼上後按「驗證」,出現紅字
       <code>HTTP 401: ... Expected OAuth 2 access token ...</code>,或一直不會變綠。</p>
 
-      <p><strong>原因 1:拿錯 key。</strong>Gemini 的 API Key <strong>兩種開頭都合法</strong>:<code>AIza</code>(舊格式)或 <code>AQ.</code>(2026 新格式,部分帳號只發這種,屬正常,VoxLog 也支援)。但如果你的 key 是 <code>ya29.</code>、<code>GOCSPX-</code>、<code>4/</code> 開頭,那<strong>不是 API Key</strong>(分別是 OAuth token / 用戶端密鑰 / 授權碼),複製錯地方了。一律到 <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a> 拿(沒有就按 Create API key)。</p>
+      <p><strong>原因 1:拿錯 key。</strong>Gemini 的 API Key <strong>兩種開頭都合法</strong>:<code>AIza</code>(舊格式)或 <code>AQ.</code>(2026 新格式,VoxLog 也支援)。但如果 key 是 <code>ya29.</code>、<code>GOCSPX-</code>、<code>4/</code> 開頭,那<strong>不是 API Key</strong>,複製錯地方了。一律到 <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a> 拿。</p>
 
       <div class="note warn">
-        <span class="ic">❗「瀏覽器跑出東西」不等於 key 是好的</span>把 key 貼到測試網址後,<strong>壞 key 一樣會回一段 JSON</strong>,只是內容是錯誤。要看跑出來的是哪種:<br>
-        • 一條條 <code>"models/gemini-..."</code> 的清單 → <strong>key 好</strong><br>
+        <span class="ic">❗「瀏覽器跑出東西」不等於 key 是好的</span>壞 key 一樣會回一段 JSON。要看內容:<br>
+        • 一條條 <code>"models/gemini-..."</code> 清單 → <strong>key 好</strong><br>
         • 開頭是 <code>"error"</code>、有 <code>"API key not valid"</code> 或 <code>code: 400/401/403</code> → <strong>key 壞</strong>(換一把)
       </div>
       <p class="muted">測試網址(把「你的KEY」換掉,貼瀏覽器按 Enter):</p>
@@ -447,15 +414,15 @@ done</pre>
         <pre>https://generativelanguage.googleapis.com/v1beta/models?key=你的KEY</pre>
       </div>
 
-      <p style="margin-top:14px;"><strong>原因 2:key 沒貼乾淨(舊版才會遇到)。</strong>Key 欄位用 <code>*</code> 星號遮住,看不到內容;舊版若欄位裡有殘缺的舊 key、又沒清掉就貼,新 key 會<strong>接在後面變成一長串壞東西</strong>。<strong>新版已修正</strong>:在 Key 欄位貼上時會自動「整段取代+去除前後空白」,直接貼就會通。所以<strong>先照「🔄 之後怎麼更新到最新版」更新一次</strong>,多半就解決了。萬一還在舊版,手動解:點進欄位 → 整個刪乾淨(按住 Delete 刪到空)→ 再貼一次乾淨的 key。</p>
+      <p style="margin-top:14px;"><strong>原因 2:key 沒貼乾淨。</strong>Key 欄位用星號遮住;若欄位裡有殘缺的舊 key、又沒清掉就貼,新 key 會接在後面變壞。解法:點進欄位 → 整個刪乾淨 → 再貼一次乾淨的 key。</p>
 
       <div class="note tip">
-        <span class="ic">🛟 終極解法:直接寫進設定檔,完全繞過輸入框</span>如果上面都試了還是失敗,在 VoxLog 資料夾內開設定檔:
+        <span class="ic">🛟 終極解法:直接寫進設定檔</span>如果都試了還失敗,在 VoxLog 資料夾內開設定檔:
         <div class="code" style="margin-top:10px;">
           <button class="copy">複製</button>
           <pre>open -e config.json</pre>
         </div>
-        把 <code>"gemini_key": "..."</code> 引號中間<strong>整段換成</strong>確認過的 <code>AIza</code> key(其他引擎是 <code>anthropic_key</code> / <code>openai_key</code>),存檔(⌘S)→ 重開 <code>voxlog</code>。App 會自動把它載進欄位,不必再經過複製貼上。
+        把 <code>"gemini_key": "..."</code> 引號中間<strong>整段換成</strong>確認過的 key(其他引擎是 <code>anthropic_key</code> / <code>openai_key</code>),存檔(⌘S)→ 重開 <code>voxlog</code>。
       </div>
     </div>
   </details>
@@ -463,20 +430,18 @@ done</pre>
   <details>
     <summary>⑥ App 裡複製貼上(⌘C / ⌘V)沒反應<span class="tag">macOS</span></summary>
     <div class="body">
-      <p><strong>症狀:</strong>在 VoxLog 視窗裡 <kbd>⌘C</kbd> / <kbd>⌘V</kbd> / <kbd>⌘A</kbd> 沒作用,key 或網址貼不進去。</p>
-      <p><strong>原因:</strong>macOS 上 tkinter(VoxLog 的介面框架)的剪貼簿快捷鍵預設常失靈。新版 VoxLog 已內建修正,但<strong>舊的下載版本沒有</strong>。</p>
-      <p><strong>解法:</strong></p>
-      <p>① <strong>先更新到最新版</strong>(見上面「🔄 之後怎麼更新到最新版」,或重新到 GitHub 下載 ZIP 覆蓋),再<strong>重開 App</strong> 讓修正生效。</p>
-      <p>② 萬一還是不行,就用<strong>不需要貼上</strong>的方式填 key —— 照上面 ⑤ 的「🛟 終極解法」直接編 <code>config.json</code>。</p>
+      <p><strong>症狀:</strong>在 VoxLog 視窗裡 <kbd>⌘C</kbd> / <kbd>⌘V</kbd> / <kbd>⌘A</kbd> 沒作用。</p>
+      <p><strong>原因:</strong>Mac 上 tkinter(介面框架)的剪貼簿快捷鍵預設常失靈。新版已內建修正,舊下載版本沒有。</p>
+      <p><strong>解法:</strong>① 先<strong>雙擊 <code>update.command</code> 更新</strong>再重開 App。② 還不行就用不需貼上的方式填 key —— 照 ⑤ 的「🛟 終極解法」直接編 <code>config.json</code>。</p>
     </div>
   </details>
 
   <details>
     <summary>⑦ 速度與其他</summary>
     <div class="body">
-      <p>• <strong>Mac 上語音轉錄都跑 CPU</strong>:一般 Whisper 與 WhisperX 引擎在 Mac 目前都用 CPU,功能正常但比 Windows + 顯卡慢。(一般 Whisper 因 Apple MPS 缺少它用到的稀疏張量運算、在 MPS 上會崩潰,所以程式自動改用 CPU,不是當機。)</p>
-      <p>• 想快一點:檔案不大時差異有限;真的很在意速度,Windows + NVIDIA 顯卡才有 CUDA 加速。</p>
-      <p>• 只想用「載入 .md 做摘要」這類純 AI 功能、不轉錄語音的話,完全不受上面影響,也更快。</p>
+      <p>• <strong>Mac 上語音轉錄都跑 CPU</strong>:Whisper 與 WhisperX 在 Mac 目前都用 CPU,功能正常但比 Windows + 顯卡慢。(Apple MPS 缺少 Whisper 用到的稀疏運算會崩潰,所以程式自動改用 CPU,不是當機。)</p>
+      <p>• 真的很在意速度,Windows + NVIDIA 顯卡才有 CUDA 加速。</p>
+      <p>• 只用「載入 .md 做摘要」這類純 AI 功能、不轉錄語音的話,完全不受影響,也更快。</p>
     </div>
   </details>
 
