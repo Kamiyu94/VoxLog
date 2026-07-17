@@ -20,9 +20,7 @@ VoxLog 是一個具備圖形化介面 (GUI) 的語音轉文字與 AI 輔助處�
 
 ## 📸 介面截圖
 
-> _截圖待補：將主介面截圖存成 `docs/screenshot.png`，下面這行取消註解即可顯示。_
-
-<!-- ![VoxLog 主介面](docs/screenshot.png) -->
+![VoxLog 主介面](docs/screenshot.png)
 
 ## 🚀 快速開始
 
