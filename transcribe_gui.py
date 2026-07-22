@@ -859,6 +859,67 @@ def _collapse_repeats(text):
     return text
 
 
+# ── 逐字稿分段 ────────────────────────────────────────────────────────
+# Whisper 的 segment 大約是「一句話」（2~5 秒），直接一句一行輸出，逐字稿看起來
+# 就跟字幕檔一樣破碎。這裡把同一位講者連續、語意相連的 segment 併成一段再輸出，
+# 時間戳取整段的起訖。字幕（.srt）仍走原本的 segment 粒度，不受影響。
+_BLOCK_MAX_CHARS = 200   # 一段字數上限；再長就算同一人也另起一段，免得變成一面牆
+_BLOCK_MAX_GAP = 4.0     # 中間停頓超過這麼多秒視為換一段話
+
+
+def _join_sentence(prev, nxt):
+    """接續兩個 segment。Whisper 中文輸出多半自帶標點，沒有的才補逗號。"""
+    if not prev:
+        return nxt
+    tail = prev[-1]
+    if tail in "。，、；：？！…,.;:?!":
+        return prev + nxt
+    return prev + ("，" if "一" <= tail <= "鿿" else " ") + nxt
+
+
+def _merge_segments(segs, converter=None, with_speaker=False,
+                    max_chars=_BLOCK_MAX_CHARS, max_gap=_BLOCK_MAX_GAP):
+    """把 segment 串併成區塊，回傳 [{speaker, start, end, text}]。
+    with_speaker=False（無分軌）時 speaker 一律 None，只依停頓與長度分段。"""
+    blocks = []
+    for seg in segs:
+        text = (seg.get("text") or "").strip()
+        if not text:
+            continue
+        if converter:
+            text = converter.convert(text)
+        text = _collapse_repeats(text)
+        start = float(seg.get("start") or 0)
+        end = float(seg.get("end") or 0)
+        speaker = (seg.get("speaker") or "SPEAKER_??") if with_speaker else None
+        prev = blocks[-1] if blocks else None
+        if (prev is not None and prev["speaker"] == speaker
+                and start - prev["end"] <= max_gap
+                and len(prev["text"]) < max_chars):
+            prev["text"] = _join_sentence(prev["text"], text)
+            prev["end"] = end
+        else:
+            blocks.append({"speaker": speaker, "start": start, "end": end, "text": text})
+    return blocks
+
+
+def _fmt_ts(start, end):
+    return (f"[{int(start)//60:02d}:{int(start)%60:02d} --> "
+            f"{int(end)//60:02d}:{int(end)%60:02d}]")
+
+
+def _write_blocks(f, blocks):
+    """輸出區塊。有講者時，換人才印一次名字並空一行隔開。"""
+    current = None
+    for b in blocks:
+        if b["speaker"] is not None and b["speaker"] != current:
+            if current is not None:
+                f.write("\n")
+            f.write(f"{b['speaker']}：\n")
+            current = b["speaker"]
+        f.write(f"{_fmt_ts(b['start'], b['end'])} {b['text']}\n")
+
+
 # ── 長檔切段 + checkpoint ──────────────────────────────────────────────
 # 動機：長音檔在地端轉錄/說話人辨識會吃大量記憶體（pyannote 吃整檔），且「跑到
 # 一半崩潰就全盤皆輸」。超過門檻的檔案會先在「靜音處」就近切成數段，逐段轉錄，
@@ -988,33 +1049,14 @@ def _write_transcript_plain(out_path, all_segs):
     if os.path.exists(out_path):
         os.remove(out_path)  # 新檔的建立/加入日期=現在，免得 Finder 依加入日期排序排回舊日期
     with open(out_path, "w", encoding="utf-8") as f:
-        for seg in all_segs:
-            start, end = int(seg["start"]), int(seg["end"])
-            ts = f"[{start//60:02d}:{start%60:02d} --> {end//60:02d}:{end%60:02d}]"
-            f.write(f"{ts} {_collapse_repeats(seg['text'].strip())}\n")
+        _write_blocks(f, _merge_segments(all_segs))
 
 
 def _write_transcript_speaker(out_path, all_segs, converter):
     if os.path.exists(out_path):
         os.remove(out_path)  # 同上：新檔日期=現在
     with open(out_path, "w", encoding="utf-8") as f:
-        current = None
-        for seg in all_segs:
-            start, end = int(seg.get("start", 0)), int(seg.get("end", 0))
-            speaker = seg.get("speaker", "SPEAKER_??")
-            text = seg.get("text", "").strip()
-            if not text:
-                continue
-            if converter:
-                text = converter.convert(text)
-            text = _collapse_repeats(text)
-            ts = f"[{start//60:02d}:{start%60:02d} --> {end//60:02d}:{end%60:02d}]"
-            if speaker != current:
-                if current is not None:
-                    f.write("\n")
-                f.write(f"{speaker}：\n")
-                current = speaker
-            f.write(f"{ts} {text}\n")
+        _write_blocks(f, _merge_segments(all_segs, converter, with_speaker=True))
 
 
 def _write_srt_segments(srt_path, all_segs, converter=None):
@@ -1242,11 +1284,7 @@ def whisper_worker(audio, out_dir, model_name, lang, prompt, write_srt, result_q
         out_path = out_path_override or os.path.join(out_dir, f"{base}_transcript.txt")
         f, out_path = _safe_open_transcript(out_path, log_q)
         with f:
-            for seg in result["segments"]:
-                start = int(seg["start"])
-                end = int(seg["end"])
-                ts = f"[{start//60:02d}:{start%60:02d} --> {end//60:02d}:{end%60:02d}]"
-                f.write(f"{ts} {_collapse_repeats(seg['text'].strip())}\n")
+            _write_blocks(f, _merge_segments(result["segments"]))
 
         if write_srt:
             srt_path = os.path.join(out_dir, f"{base}.srt")
@@ -1341,28 +1379,9 @@ def whisperx_worker(audio, out_dir, model_name, lang, hf_token, num_speakers, pr
 
         base = os.path.splitext(os.path.basename(audio))[0]
         out_path = out_path_override or os.path.join(out_dir, f"{base}_transcript.txt")
-        segments_for_srt = []
         f, out_path = _safe_open_transcript(out_path, log_q)
         with f:
-            current_speaker = None
-            for seg in result["segments"]:
-                start = seg.get("start", 0)
-                end = seg.get("end", 0)
-                speaker = seg.get("speaker", "SPEAKER_??")
-                text = seg.get("text", "").strip()
-                if not text:
-                    continue
-                if converter:
-                    text = converter.convert(text)
-                text = _collapse_repeats(text)
-                ts = f"[{int(start)//60:02d}:{int(start)%60:02d} --> {int(end)//60:02d}:{int(end)%60:02d}]"
-                if speaker != current_speaker:
-                    if current_speaker is not None:
-                        f.write("\n")
-                    f.write(f"{speaker}：\n")
-                    current_speaker = speaker
-                f.write(f"{ts} {text}\n")
-                segments_for_srt.append((start, end, speaker, text))
+            _write_blocks(f, _merge_segments(result["segments"], converter, with_speaker=True))
 
         if write_srt:
             srt_path = os.path.join(out_dir, f"{base}.srt")
@@ -1498,22 +1517,23 @@ def whispercpp_worker(audio, out_dir, model_name, lang, prompt, write_srt, resul
             converter = None
 
         out_path = out_path_override or os.path.join(out_dir, f"{base}_transcript.txt")
-        srt_entries = []
+        # whisper.cpp 的時間放在 offsets（毫秒），先正規化成 start/end 秒，好共用分段邏輯
+        norm = []
+        for seg in segs:
+            text = (seg.get("text") or "").strip()
+            if not text:
+                continue
+            if converter:
+                text = converter.convert(text)
+            off = seg.get("offsets", {})
+            norm.append({"start": (off.get("from", 0) or 0) / 1000.0,
+                         "end": (off.get("to", 0) or 0) / 1000.0,
+                         "text": text})
+        # 字幕維持原本的逐句粒度，只有逐字稿併段
+        srt_entries = [(s["start"], s["end"], _collapse_repeats(s["text"])) for s in norm]
         f, out_path = _safe_open_transcript(out_path, log_q)
         with f:
-            for seg in segs:
-                off = seg.get("offsets", {})
-                start = (off.get("from", 0) or 0) / 1000.0
-                end = (off.get("to", 0) or 0) / 1000.0
-                text = (seg.get("text") or "").strip()
-                if not text:
-                    continue
-                if converter:
-                    text = converter.convert(text)
-                text = _collapse_repeats(text)
-                ts = f"[{int(start)//60:02d}:{int(start)%60:02d} --> {int(end)//60:02d}:{int(end)%60:02d}]"
-                f.write(f"{ts} {text}\n")
-                srt_entries.append((start, end, text))
+            _write_blocks(f, _merge_segments(norm))
 
         if write_srt:
             srt_path = os.path.join(out_dir, f"{base}.srt")
@@ -1640,24 +1660,7 @@ def whispercpp_diar_worker(audio, out_dir, model_name, lang, hf_token, num_speak
         out_path = out_path_override or os.path.join(out_dir, f"{base}_transcript.txt")
         f, out_path = _safe_open_transcript(out_path, log_q)
         with f:
-            current_speaker = None
-            for seg in result["segments"]:
-                start = seg.get("start", 0)
-                end = seg.get("end", 0)
-                speaker = seg.get("speaker", "SPEAKER_??")
-                text = seg.get("text", "").strip()
-                if not text:
-                    continue
-                if converter:
-                    text = converter.convert(text)
-                text = _collapse_repeats(text)
-                ts = f"[{int(start)//60:02d}:{int(start)%60:02d} --> {int(end)//60:02d}:{int(end)%60:02d}]"
-                if speaker != current_speaker:
-                    if current_speaker is not None:
-                        f.write("\n")
-                    f.write(f"{speaker}：\n")
-                    current_speaker = speaker
-                f.write(f"{ts} {text}\n")
+            _write_blocks(f, _merge_segments(result["segments"], converter, with_speaker=True))
         prog_q.put(100)
 
         log_q.put("分軌完成；可在第二步用「修正說話者」把 SPEAKER_xx 改成真實角色名。")
@@ -2155,11 +2158,15 @@ class TranscribeApp:
             _saved_engine = _suggest_stt_engine()
             save_config({"stt_engine": _saved_engine})
             self.cfg["stt_engine"] = _saved_engine
-            # whisper.cpp 在 8GB 上跑 medium 也只吃 ~1.3GB 卻準很多，故預設 medium
-            # （whisper/whisperx 不在此設，維持依記憶體建議的 small）
+            # whisper.cpp 在 8GB 上跑 medium 也只吃 ~1.3GB 卻準很多，故把原本會被建議
+            # small 的小記憶體機器提一階到 medium。記憶體大的機器仍照 _suggest_model()
+            # 拿 large-v3——別讓輕量版的保守預設把高階機也鎖在 medium。
             if _saved_engine == "whispercpp" and not self.cfg.get("stt_model"):
-                save_config({"stt_model": "medium"})
-                self.cfg["stt_model"] = "medium"
+                _m = _suggest_model()
+                if _m == "small":
+                    _m = "medium"
+                save_config({"stt_model": _m})
+                self.cfg["stt_model"] = _m
         self.engine_var = tk.StringVar(value=_engine_display_label(_saved_engine))
         ctk.CTkComboBox(row_eng, variable=self.engine_var,
                         values=[_engine_display_label(v) for v, _ in STT_ENGINES],
