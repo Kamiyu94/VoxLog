@@ -503,7 +503,6 @@ def verify_engine(ai_engine, api_key):
 
 
 _TXT_TS_PAT = re.compile(r'^\[(\d+):(\d+)\s*-->\s*(\d+):(\d+)\]\s*(.+)$')
-_TXT_SPK_PAT = re.compile(r'^(.{1,40})：\s*$')
 
 
 def txt_to_srt(transcript_path, out_path=None):
