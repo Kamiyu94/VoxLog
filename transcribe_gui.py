@@ -522,7 +522,6 @@ def txt_to_srt(transcript_path, out_path=None):
         return f"{h:02d}:{m:02d}:{s:02d},000"
 
     entries = []
-    current_speaker = None
     with open(transcript_path, "r", encoding="utf-8") as f:
         for line in f:
             line = line.rstrip()
@@ -531,16 +530,9 @@ def txt_to_srt(transcript_path, out_path=None):
                 sm, ss, em, es, text = m.groups()
                 start = int(sm) * 60 + int(ss)
                 end = int(em) * 60 + int(es)
-                # 有說話人標記時寫進字幕，方便對照；無則只輸出文字
-                if current_speaker:
-                    subtitle = f"{current_speaker}：{text}"
-                else:
-                    subtitle = text
-                entries.append((_fmt(start), _fmt(end), subtitle))
-            else:
-                spk_m = _TXT_SPK_PAT.match(line)
-                if spk_m and line.strip():
-                    current_speaker = spk_m.group(1).strip()
+                # 字幕只輸出文字，不帶說話人（說話人只在逐字稿）
+                entries.append((_fmt(start), _fmt(end), text))
+            # 說話人標頭行（xxx：）略過，不影響 SRT
 
     with open(out_path, "w", encoding="utf-8") as f:
         for i, (start, end, text) in enumerate(entries, 1):
