@@ -42,6 +42,9 @@ reference/
 .DS_Store
 Thumbs.db
 
+# AI CLI 工具留下的本機設定（曾誤 commit 一個指向 Windows 路徑的 symlink）
+.antigravitycli/
+
 # whisper.cpp 模型（大檔，不上傳）
 models/
 *.bin

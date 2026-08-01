@@ -62,9 +62,11 @@ echo "  ✓ 版本：$VERSION"
 
 # 3) 壓縮
 #    用命令列的 zip -X，不要用 Finder 的「壓縮」——後者會夾帶一堆 __MACOSX/._ 垃圾檔。
-#    make-zip.command 本身不必發給使用者，這裡排除掉。
+#    刻意「不」排除任何檔案：少一個檔，使用者解壓後 git status 就會顯示該檔被刪、
+#    repo 一裝好就是髒的（雖不影響 update，但 debug 時多一層雜訊）。
+#    zip 內容 = repo 內容，最單純。
 echo "→ 壓縮中…"
-( cd "$WORK" && zip -r -q -X VoxLog.zip VoxLog -x "VoxLog/make-zip.command" )
+( cd "$WORK" && zip -r -q -X VoxLog.zip VoxLog )
 
 # 4) 驗貨：確認沒夾帶敏感檔、執行權限還在
 echo "→ 檢查產出的 zip…"
@@ -98,6 +100,19 @@ if echo "$LIST" | grep -q "VoxLog/\.git/"; then
 else
   echo "  ✗ 缺少 .git，使用者將無法一鍵更新"
   FAIL=1
+fi
+
+# 解壓回來跑 git status：有檔案沒進 zip 的話這裡會現形
+# （踩過的坑：一個指向 Windows 路徑的斷掉 symlink，zip 會靜靜跳過）
+mkdir -p "$WORK/verify"
+( cd "$WORK/verify" && unzip -qq "$WORK/VoxLog.zip" )
+DIRTY=$( cd "$WORK/verify/VoxLog" && git status --porcelain )
+if [[ -n "$DIRTY" ]]; then
+  echo "  ✗ 解壓後 repo 不乾淨，下列檔案沒被壓進去："
+  echo "$DIRTY" | sed 's/^/      /'
+  FAIL=1
+else
+  echo "  ✓ 解壓後 git status 乾淨（沒有漏檔）"
 fi
 
 if [[ "$FAIL" != "0" ]]; then
