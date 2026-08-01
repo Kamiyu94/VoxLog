@@ -1,0 +1,502 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="color-scheme" content="dark">
+<title>VoxLog · 錄音變逐字稿與會議紀錄</title>
+<meta name="description" content="VoxLog 是一款把語音、影片自動轉成逐字稿與 AI 會議紀錄的桌面工具，支援 macOS 與 Windows，雙擊即可安裝。">
+<style>
+  :root{
+    --bg:#1E1E1E; --surface:#2A2A2A; --surface2:#242424; --border:#3A3A3A;
+    --text:#E8E8E8; --subtext:#9A9A9A; --accent:#4A9EFF; --accent-dim:rgba(74,158,255,.12);
+    --green:#27AE60; --amber:#E0A93B; --red:#E74C3C; --code:#D7E3F4;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html{scroll-behavior:smooth;}
+  body{
+    margin:0; background:var(--bg); color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft JhengHei","PingFang TC","Noto Sans TC",sans-serif;
+    line-height:1.75; font-size:18px; padding:0 0 80px;
+    -webkit-text-size-adjust:100%;
+  }
+  .wrap{max-width:860px; margin:0 auto; padding:0 20px;}
+  a{color:var(--accent); text-decoration:none;}
+  a:hover{text-decoration:underline;}
+  strong{color:#fff;}
+  p{margin:12px 0;}
+  .muted{color:var(--subtext); font-size:16px;}
+
+  /* ── Header ── */
+  header{
+    padding:56px 20px 44px; text-align:center;
+    background:radial-gradient(120% 100% at 50% 0%,#252b3a 0%,var(--bg) 70%);
+    border-bottom:1px solid var(--border);
+  }
+  header .logo{font-size:44px; font-weight:800; letter-spacing:.5px; line-height:1.2;}
+  header .logo .mic{color:var(--accent);}
+  header .tagline{font-size:20px; margin-top:12px; color:var(--text);}
+  header .sub{color:var(--subtext); font-size:16px; margin-top:6px;}
+  header .badges{margin-top:18px; display:flex; gap:8px; justify-content:center; flex-wrap:wrap;}
+  header .badges span{
+    background:var(--surface); border:1px solid var(--border); border-radius:999px;
+    padding:5px 15px; font-size:14px; color:var(--subtext);
+  }
+  .cta{
+    display:inline-block; margin-top:26px; background:var(--accent); color:#fff;
+    font-size:18px; font-weight:700; padding:14px 34px; border-radius:12px;
+    box-shadow:0 6px 22px rgba(74,158,255,.28);
+  }
+  .cta:hover{text-decoration:none; filter:brightness(1.08);}
+
+  /* ── 區塊標題 ── */
+  h2{
+    font-size:26px; margin:52px 0 14px; display:flex; align-items:center; gap:12px;
+    scroll-margin-top:20px;
+  }
+  h3{font-size:19px; margin:26px 0 8px; color:#fff;}
+  .num{
+    flex:0 0 36px; width:36px; height:36px; border-radius:50%;
+    background:var(--accent); color:#fff; font-size:18px; font-weight:700;
+    display:inline-flex; align-items:center; justify-content:center;
+  }
+
+  /* ── 截圖 ── */
+  .shot{
+    width:100%; border-radius:14px; border:1px solid var(--border);
+    display:block; margin:8px 0 4px;
+  }
+
+  /* ── 功能列 ── */
+  .feats{display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:14px; margin:18px 0;}
+  .feat{background:var(--surface2); border:1px solid var(--border); border-radius:14px; padding:16px 18px;}
+  .feat h4{margin:0 0 4px; font-size:17px; color:#fff;}
+  .feat p{margin:0; font-size:15.5px; color:var(--subtext); line-height:1.6;}
+
+  /* ── 選擇器 ── */
+  .picker{display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:14px; margin:16px 0 6px;}
+  .opt{
+    background:var(--surface2); border:2px solid var(--border); border-radius:16px;
+    padding:20px; cursor:pointer; text-align:left; color:inherit; font:inherit;
+    transition:border-color .15s, background .15s, transform .1s;
+  }
+  .opt:hover{border-color:#4d4d4d;}
+  .opt:active{transform:scale(.99);}
+  .opt[aria-pressed="true"]{border-color:var(--accent); background:var(--accent-dim);}
+  .opt .ttl{font-size:19px; font-weight:700; color:#fff; display:flex; align-items:center; gap:9px;}
+  .opt .ttl .tick{
+    margin-left:auto; width:22px; height:22px; border-radius:50%; flex:0 0 22px;
+    background:var(--accent); color:#fff; font-size:13px; font-weight:700;
+    display:none; align-items:center; justify-content:center;
+  }
+  .opt[aria-pressed="true"] .ttl .tick{display:inline-flex;}
+  .opt .desc{margin:8px 0 0; font-size:15.5px; color:var(--subtext); line-height:1.6;}
+  .opt .for{
+    display:inline-block; margin-top:10px; font-size:13.5px; color:var(--accent);
+    background:rgba(74,158,255,.1); border:1px solid rgba(74,158,255,.3);
+    border-radius:999px; padding:3px 12px;
+  }
+
+  /* ── 步驟卡 ── */
+  .steps{counter-reset:step; margin-top:8px;}
+  .step{
+    background:var(--surface2); border:1px solid var(--border); border-radius:16px;
+    padding:20px 22px; margin:14px 0; position:relative;
+  }
+  .step h4{
+    margin:0 0 8px; font-size:19px; color:#fff;
+    display:flex; align-items:flex-start; gap:12px;
+  }
+  .step h4::before{
+    counter-increment:step; content:counter(step);
+    flex:0 0 30px; width:30px; height:30px; border-radius:50%;
+    background:var(--accent); color:#fff; font-size:16px; font-weight:700;
+    display:inline-flex; align-items:center; justify-content:center; margin-top:1px;
+  }
+  .step .body{padding-left:42px;}
+  .step .body > :first-child{margin-top:0;}
+  .step ul{margin:10px 0; padding-left:22px;}
+  .step li{margin:6px 0; font-size:16.5px;}
+
+  /* ── 檔名 pill ── */
+  .file{
+    display:inline-block; font-family:"SF Mono",Consolas,"Cascadia Code",monospace;
+    font-size:15px; color:var(--accent); background:#161616;
+    border:1px solid var(--border); border-radius:8px; padding:2px 10px;
+    word-break:break-all;
+  }
+
+  /* ── 程式碼 + 複製鈕 ── */
+  .code{position:relative; background:#161616; border:1px solid var(--border); border-radius:12px; margin:14px 0; overflow:hidden;}
+  .code pre{
+    margin:0; padding:16px 62px 16px 16px; overflow-x:auto;
+    font-family:"SF Mono",Consolas,"Cascadia Code",monospace;
+    font-size:15px; color:var(--code); line-height:1.6; white-space:pre;
+  }
+  .copy{
+    position:absolute; top:9px; right:9px;
+    background:var(--surface); color:var(--text); border:1px solid var(--border);
+    border-radius:8px; padding:7px 12px; font-size:13px; font-weight:600; cursor:pointer;
+  }
+  .copy:active{transform:scale(.93);}
+  .copy.done{background:var(--green); color:#fff; border-color:var(--green);}
+
+  /* ── 提示框 ── */
+  .note{border-radius:12px; padding:13px 16px; margin:14px 0; font-size:16px; border:1px solid; line-height:1.7;}
+  .note .ic{font-weight:700; margin-right:6px;}
+  .note.tip{background:rgba(74,158,255,.08); border-color:rgba(74,158,255,.35);}
+  .note.tip .ic{color:var(--accent);}
+  .note.warn{background:rgba(224,169,59,.08); border-color:rgba(224,169,59,.4);}
+  .note.warn .ic{color:var(--amber);}
+  .note.ok{background:rgba(39,174,96,.1); border-color:rgba(39,174,96,.4);}
+  .note.ok .ic{color:var(--green);}
+
+  /* ── 下載鈕 ── */
+  .dl{
+    display:inline-flex; align-items:center; gap:10px; background:var(--accent); color:#fff;
+    font-size:18px; font-weight:700; padding:14px 30px; border-radius:12px; margin:6px 0;
+  }
+  .dl:hover{text-decoration:none; filter:brightness(1.08);}
+
+  /* ── 折疊 ── */
+  details{background:var(--surface2); border:1px solid var(--border); border-radius:12px; margin:12px 0; overflow:hidden;}
+  details summary{cursor:pointer; padding:15px 18px; font-size:17px; font-weight:600; list-style:none; display:flex; align-items:center; gap:9px;}
+  details summary::-webkit-details-marker{display:none;}
+  details summary::before{content:"▸"; color:var(--accent); font-size:15px;}
+  details[open] summary::before{content:"▾";}
+  details[open] summary{border-bottom:1px solid var(--border);}
+  details .body{padding:6px 18px 12px; font-size:16.5px;}
+
+  /* ── 文件連結 ── */
+  .links{background:var(--surface2); border:1px solid var(--border); border-radius:14px; padding:6px 8px; margin:16px 0;}
+  .links a{display:flex; align-items:baseline; gap:10px; padding:14px 14px; color:var(--text); border-bottom:1px solid var(--border); font-size:17px;}
+  .links a:last-child{border-bottom:none;}
+  .links a:hover{text-decoration:none; color:#fff;}
+  .links a .n{color:var(--accent); font-weight:700;}
+  .links a .d{color:var(--subtext); font-size:15px; margin-left:auto; text-align:right;}
+
+  hr{border:none; border-top:1px solid var(--border); margin:44px 0;}
+  footer{text-align:center; color:var(--subtext); font-size:15px; margin-top:40px;}
+  .hidden{display:none !important;}
+
+  @media (max-width:600px){
+    body{font-size:17px;}
+    header{padding:40px 18px 34px;}
+    header .logo{font-size:34px;}
+    header .tagline{font-size:18px;}
+    h2{font-size:22px;}
+    .step{padding:18px 16px;}
+    .step .body{padding-left:0;}
+    .links a .d{display:none;}
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo"><span class="mic">🎙</span> VoxLog</div>
+  <div class="tagline">把錄音和影片，變成逐字稿與會議紀錄</div>
+  <div class="sub">在自己的電腦上跑，檔案不外傳</div>
+  <div class="badges">
+    <span>🍎 macOS</span>
+    <span>🪟 Windows</span>
+    <span>免費開源 MIT</span>
+  </div>
+  <div><a class="cta" href="#install">開始安裝 ↓</a></div>
+</header>
+
+<div class="wrap">
+
+  <!-- ── 這是什麼 ── -->
+  <h2 id="what">這是什麼</h2>
+  <p>丟一段錄音、一支影片、或一條 YouTube 網址進去，VoxLog 會自動聽寫成逐字稿，再用 AI 幫你整理成一份可以直接交出去的會議紀錄（Word 檔）。</p>
+
+  <img class="shot" src="docs/screenshot.png" alt="VoxLog 主介面：左邊選檔案與模型，右邊顯示轉錄進度">
+
+  <div class="feats">
+    <div class="feat"><h4>🎙 語音轉逐字稿</h4><p>錄音檔、影片檔都吃，也可以直接貼 YouTube 網址。</p></div>
+    <div class="feat"><h4>🗣 分辨誰在說話</h4><p>標出「誰說了哪一句」（完整版功能）。</p></div>
+    <div class="feat"><h4>🤖 AI 整理會議紀錄</h4><p>自動修錯字、抓重點與待辦，輸出成 Word 檔。</p></div>
+    <div class="feat"><h4>📺 字幕檔</h4><p>順手切成 SRT 字幕，影片可以直接用。</p></div>
+  </div>
+
+  <div class="note tip">
+    <span class="ic">💡</span>AI 整理那一段需要你自己的 AI 帳號金鑰（Claude、Gemini、ChatGPT 擇一），裝好後在畫面上貼一次就好。不想用雲端 AI 的話，也可以接自己電腦上的 Ollama／LM Studio。
+  </div>
+
+  <hr>
+
+  <!-- ══════════ 安裝引導 ══════════ -->
+  <h2 id="install"><span class="num">1</span>你用哪一台電腦？</h2>
+  <div class="picker" id="os-picker">
+    <button class="opt" type="button" data-os="mac" aria-pressed="false">
+      <div class="ttl">🍎 Mac<span class="tick">✓</span></div>
+      <p class="desc">MacBook、iMac、Mac mini 都算。</p>
+    </button>
+    <button class="opt" type="button" data-os="win" aria-pressed="false">
+      <div class="ttl">🪟 Windows<span class="tick">✓</span></div>
+      <p class="desc">Windows 10 或 11。</p>
+    </button>
+  </div>
+
+  <h2 id="variant"><span class="num">2</span>你需要哪些功能？</h2>
+  <div class="picker" id="var-picker">
+    <button class="opt" type="button" data-var="lite" aria-pressed="false">
+      <div class="ttl">🪶 輕量版<span class="tick">✓</span></div>
+      <p class="desc">我只要<strong>逐字稿</strong>和 <strong>AI 會議紀錄</strong>。</p>
+      <span class="for">安裝快、佔空間小，一般筆電就順</span>
+    </button>
+    <button class="opt" type="button" data-var="full" aria-pressed="false">
+      <div class="ttl">🧰 完整版<span class="tick">✓</span></div>
+      <p class="desc">我還要<strong>分辨誰說了哪一句</strong>。</p>
+      <span class="for">會多下載好幾 GB，適合效能較好的電腦</span>
+    </button>
+  </div>
+  <p class="muted">拿不定主意就選輕量版。之後想要「分人」功能，回來雙擊完整版的安裝檔就會原地升級，東西不用重來。</p>
+
+  <h2 id="steps"><span class="num">3</span>照著做</h2>
+
+  <p id="prompt-pick" class="note tip"><span class="ic">☝️</span>先選上面兩題，這裡就會出現你這台電腦專屬的步驟。</p>
+
+  <div id="plan" class="hidden">
+
+    <div class="note ok" id="plan-summary"><span class="ic">✅</span><span></span></div>
+
+    <div class="steps">
+
+      <!-- Windows 專屬前置 -->
+      <div class="step only-win">
+        <h4>先裝 Python（只有第一次要做）</h4>
+        <div class="body">
+          <p>到 Python 官網下載安裝，<strong>安裝畫面最下面那個「Add python.exe to PATH」一定要打勾</strong>，再按 Install Now。</p>
+          <p><a class="dl" href="https://www.python.org/downloads/" target="_blank" rel="noopener">前往 Python 官網 ↗</a></p>
+          <p class="muted">請裝 3.11 或 3.12 版。忘記打勾的話，重新執行一次安裝檔選 Modify 就能補勾。</p>
+        </div>
+      </div>
+
+      <!-- 下載 -->
+      <div class="step">
+        <h4>下載 VoxLog</h4>
+        <div class="body">
+          <p>按下面的按鈕會開啟 Google 雲端硬碟，點右上角的下載圖示存下 <span class="file">VoxLog.zip</span>，再解壓縮成一個 <span class="file">VoxLog</span> 資料夾。</p>
+          <p><a class="dl" id="dl-btn" href="https://drive.google.com/file/d/1hpN2F3qgu8Ei5rI3tDJwaT1MRb_GQHCH/view?usp=sharing" target="_blank" rel="noopener">⬇ 下載 VoxLog.zip</a></p>
+          <p class="muted only-win">Windows 解壓縮：對 zip 按右鍵 →「解壓縮全部」。解出來如果多一個 <span class="file">__MACOSX</span> 資料夾，那是壓縮時附帶的，忽略或刪掉都行，要打開的是 <span class="file">VoxLog</span> 那個。</p>
+          <div class="note warn">
+            <span class="ic">⚠</span>解壓縮後<strong>把整個資料夾搬到「文件」或「應用程式」裡再開始安裝</strong>，別留在「下載」資料夾直接跑——之後很容易被自己清掉。
+          </div>
+        </div>
+      </div>
+
+      <!-- 安裝 -->
+      <div class="step">
+        <h4>雙擊安裝檔</h4>
+        <div class="body">
+          <p>打開 VoxLog 資料夾，雙擊 <span class="file" id="installer-name"></span>，然後就放著讓它跑。</p>
+
+          <div class="only-mac">
+            <div class="note warn">
+              <span class="ic">⚠</span>如果跳出「無法打開，因為來自未識別的開發者」——<strong>對著同一個檔案按右鍵 → 選「打開」</strong>，再按一次視窗裡的「打開」就會過。這個只要做一次。
+            </div>
+            <ul>
+              <li>中途可能跳出 Apple 的「安裝命令列工具」小視窗 → 按 <strong>Install</strong>。</li>
+              <li>可能要輸入<strong>這台電腦的開機密碼</strong>（它在裝 Homebrew，打字時不會顯示，直接打完按 Enter）。</li>
+            </ul>
+          </div>
+
+          <div class="only-win">
+            <div class="note warn">
+              <span class="ic">⚠</span>如果跳出藍色的「Windows 已保護您的電腦」——點<strong>「其他資訊」→「仍要執行」</strong>。
+            </div>
+          </div>
+
+          <p>整個過程會一直印字，<span class="only-lite">大約 5～15 分鐘</span><span class="only-full">大約 15～40 分鐘（要下載好幾 GB，網路慢會更久）</span>。<strong>看到「安裝完成」再關掉視窗。</strong></p>
+        </div>
+      </div>
+
+      <!-- 啟動 -->
+      <div class="step">
+        <h4>啟動 VoxLog</h4>
+        <div class="body">
+          <p>以後每次要用，就雙擊資料夾裡的 <span class="file" id="launcher-name"></span>。</p>
+          <p class="only-mac muted">習慣用終端機的話，打 <span class="file">voxlog</span> 也能啟動。</p>
+        </div>
+      </div>
+
+      <!-- API Key -->
+      <div class="step">
+        <h4>貼上 AI 金鑰（只做一次）</h4>
+        <div class="body">
+          <p>第一次打開，在畫面上選一個 AI 引擎（Claude／Gemini／ChatGPT），把你的 API 金鑰貼進去，按<strong>「驗證」</strong>，通過後就會自動存起來，下次不用再貼。</p>
+          <p class="muted">只做逐字稿、不需要 AI 整理的話，這步可以先跳過。</p>
+        </div>
+      </div>
+
+      <!-- 完整版：HuggingFace -->
+      <div class="step only-full">
+        <h4>開通「分辨誰在說話」（免費，只做一次）</h4>
+        <div class="body">
+          <p>這個功能用的模型要求先註冊同意，三步：</p>
+          <ul>
+            <li>到 <a href="https://huggingface.co/settings/tokens" target="_blank" rel="noopener">huggingface.co 建立 Token ↗</a>，建立時勾選 <strong>Read access to public gated repositories</strong>。</li>
+            <li>用<strong>同一個帳號</strong>到這兩頁，各按一次 <strong>Agree and access repository</strong>：<br>
+              <a href="https://huggingface.co/pyannote/speaker-diarization-community-1" target="_blank" rel="noopener">speaker-diarization-community-1 ↗</a><br>
+              <a href="https://huggingface.co/pyannote/segmentation-3.0" target="_blank" rel="noopener">segmentation-3.0 ↗</a>
+            </li>
+            <li>回到 VoxLog，把 Token 貼進「HuggingFace Token」欄位。</li>
+          </ul>
+          <div class="note warn">
+            <span class="ic">⚠</span>一定要同意 <strong>community-1</strong> 那一頁；只同意舊版的 speaker-diarization-3.1 沒有用。
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /steps -->
+
+    <h3>以後怎麼更新</h3>
+    <div class="note ok">
+      <span class="ic">🔄</span>之後 VoxLog 出新版，<strong>雙擊資料夾裡的 <span class="file" id="updater-name"></span></strong> 就會自動抓最新版、順便補裝需要的東西。<strong>不用回來重新下載整包</strong>，你貼過的 API 金鑰和已經下載好的模型也都不會被動到。
+    </div>
+    <div class="note warn only-win">
+      <span class="ic">⚠</span>Windows 第一次更新前要先裝 git：在 PowerShell 打 <code>winget install Git.Git</code>，或到 <a href="https://git-scm.com/download/win" target="_blank" rel="noopener">git-scm.com</a> 下載安裝。裝好再雙擊 <span class="file">update.bat</span>。
+    </div>
+
+    <details>
+      <summary>進階：想自己用 <code>git</code> 抓</summary>
+      <div class="body">
+        <p>不想經過雲端硬碟的話，直接 clone 也可以，內容一樣：</p>
+        <div class="code">
+          <pre>git clone https://github.com/Kamiyu94/VoxLog.git</pre>
+          <button class="copy" type="button">複製</button>
+        </div>
+        <p class="muted">抓下來之後，一樣雙擊 <span class="file" id="installer-name-2"></span> 安裝。</p>
+      </div>
+    </details>
+
+    <details class="only-mac">
+      <summary>裝不起來？Mac 常見狀況</summary>
+      <div class="body">
+        <ul>
+          <li><strong>一打開就閃退</strong>：多半是系統內建的舊 Python 造成的，安裝檔會自動換成正確版本；請確認你是雙擊安裝檔跑完，而不是自己手動裝。</li>
+          <li><strong>「分人」功能報錯</strong>：完整版安裝檔已自動處理 Mac 上的兩個相容性問題；若之後跑過 <code>brew upgrade</code> 可能要重跑一次安裝檔。</li>
+          <li>更完整的說明與逐步截圖在 <a href="MACOS_SETUP.html">macOS 安裝指南</a>。</li>
+        </ul>
+      </div>
+    </details>
+
+    <details class="only-win">
+      <summary>裝不起來？Windows 常見狀況</summary>
+      <div class="body">
+        <ul>
+          <li><strong>說找不到 python</strong>：安裝 Python 時沒勾「Add python.exe to PATH」。重跑一次 Python 安裝檔選 Modify 補勾，再重來。</li>
+          <li><strong>視窗一閃就關掉</strong>：改成對安裝檔按右鍵 →「以系統管理員身分執行」試一次。</li>
+          <li>更完整的說明在 <a href="WINDOWS_SETUP.html">Windows 安裝指南</a>。</li>
+        </ul>
+      </div>
+    </details>
+
+  </div><!-- /plan -->
+
+  <hr>
+
+  <h2 id="docs">其他說明文件</h2>
+  <div class="links">
+    <a href="setup-guide.html"><span class="n">操作手冊</span> 每個功能怎麼用 <span class="d">setup-guide.html</span></a>
+    <a href="MACOS_SETUP.html"><span class="n">macOS 安裝指南</span> 圖文逐步版 <span class="d">MACOS_SETUP.html</span></a>
+    <a href="WINDOWS_SETUP.html"><span class="n">Windows 安裝指南</span> 圖文逐步版 <span class="d">WINDOWS_SETUP.html</span></a>
+    <a href="https://github.com/Kamiyu94/VoxLog/blob/main/CHANGELOG.md"><span class="n">更新紀錄</span> 每一版改了什麼 <span class="d">CHANGELOG.md</span></a>
+    <a href="https://github.com/Kamiyu94/VoxLog"><span class="n">原始碼</span> GitHub 專案頁 <span class="d">github.com ↗</span></a>
+  </div>
+
+  <footer>
+    VoxLog · MIT License · 語音處理與 AI 整理都在你自己的電腦上進行
+  </footer>
+
+</div>
+
+<script>
+(function(){
+  var state = {os:null, variant:null};
+
+  var NAMES = {
+    mac:  {lite:'install-lite.command', full:'install-full.command', launcher:'voxlog',      updater:'update.command'},
+    win:  {lite:'install-lite.bat',     full:'install-full.bat',     launcher:'VoxLog.bat',  updater:'update.bat'}
+  };
+  var SUMMARY = {
+    'mac-lite':'你要裝的是：Mac ＋ 輕量版（逐字稿 ＋ AI 會議紀錄）',
+    'mac-full':'你要裝的是：Mac ＋ 完整版（多了分辨誰在說話）',
+    'win-lite':'你要裝的是：Windows ＋ 輕量版（逐字稿 ＋ AI 會議紀錄）',
+    'win-full':'你要裝的是：Windows ＋ 完整版（多了分辨誰在說話）'
+  };
+
+  function pick(container, attr, key){
+    var btns = container.querySelectorAll('.opt');
+    Array.prototype.forEach.call(btns, function(btn){
+      btn.addEventListener('click', function(){
+        Array.prototype.forEach.call(btns, function(b){ b.setAttribute('aria-pressed','false'); });
+        btn.setAttribute('aria-pressed','true');
+        state[key] = btn.getAttribute(attr);
+        render();
+      });
+    });
+  }
+
+  function show(sel, on){
+    Array.prototype.forEach.call(document.querySelectorAll(sel), function(el){
+      el.classList.toggle('hidden', !on);
+    });
+  }
+
+  function render(){
+    if(!state.os || !state.variant) return;
+    var n = NAMES[state.os];
+
+    show('.only-mac',  state.os === 'mac');
+    show('.only-win',  state.os === 'win');
+    show('.only-lite', state.variant === 'lite');
+    show('.only-full', state.variant === 'full');
+
+    document.getElementById('installer-name').textContent   = n[state.variant];
+    document.getElementById('installer-name-2').textContent = n[state.variant];
+    document.getElementById('launcher-name').textContent    = n.launcher;
+    document.getElementById('updater-name').textContent     = n.updater;
+    document.querySelector('#plan-summary span:last-child').textContent =
+      SUMMARY[state.os + '-' + state.variant];
+
+    document.getElementById('prompt-pick').classList.add('hidden');
+    document.getElementById('plan').classList.remove('hidden');
+  }
+
+  pick(document.getElementById('os-picker'),  'data-os',  'os');
+  pick(document.getElementById('var-picker'), 'data-var', 'variant');
+
+  // 猜使用者的作業系統，先幫他選好
+  var ua = navigator.userAgent;
+  var guess = /Mac|iPhone|iPad/.test(ua) ? 'mac' : (/Win/.test(ua) ? 'win' : null);
+  if(guess){
+    var b = document.querySelector('[data-os="' + guess + '"]');
+    if(b){ b.setAttribute('aria-pressed','true'); state.os = guess; }
+  }
+
+  // 複製鈕
+  Array.prototype.forEach.call(document.querySelectorAll('.copy'), function(btn){
+    btn.addEventListener('click', function(){
+      var txt = btn.parentNode.querySelector('pre').textContent;
+      var done = function(){
+        btn.textContent = '已複製'; btn.classList.add('done');
+        setTimeout(function(){ btn.textContent = '複製'; btn.classList.remove('done'); }, 1600);
+      };
+      if(navigator.clipboard && navigator.clipboard.writeText){
+        navigator.clipboard.writeText(txt).then(done, function(){});
+      } else {
+        var ta = document.createElement('textarea');
+        ta.value = txt; document.body.appendChild(ta); ta.select();
+        try { document.execCommand('copy'); done(); } catch(e){}
+        document.body.removeChild(ta);
+      }
+    });
+  });
+})();
+</script>
+
+</body>
+</html>
