@@ -160,7 +160,7 @@ CORRECT_AND_PARTY_PROMPT = """以下是一份語音辨識產生的逐字稿，�
 
 def load_config():
     try:
-        with open(CONFIG_PATH, "r") as f:
+        with open(CONFIG_PATH, "r", encoding="utf-8") as f:
             return json.load(f)
     except Exception:
         return {}
@@ -169,8 +169,8 @@ def load_config():
 def save_config(data):
     cfg = load_config()
     cfg.update(data)
-    with open(CONFIG_PATH, "w") as f:
-        json.dump(cfg, f, indent=2)
+    with open(CONFIG_PATH, "w", encoding="utf-8") as f:
+        json.dump(cfg, f, indent=2, ensure_ascii=False)
 
 
 def ensure_config():
@@ -196,10 +196,13 @@ def ensure_config():
 
 
 def _format_srt_time(seconds):
-    h = int(seconds // 3600)
-    m = int((seconds % 3600) // 60)
-    s = int(seconds % 60)
-    ms = int(round((seconds - int(seconds)) * 1000))
+    """秒數 → SRT 時間戳；對 ms 四捨五入溢位做進位，避免出現 00:00:01,1000。"""
+    if seconds is None or seconds < 0:
+        seconds = 0.0
+    total_ms = int(round(float(seconds) * 1000))
+    h, rem = divmod(total_ms, 3600_000)
+    m, rem = divmod(rem, 60_000)
+    s, ms = divmod(rem, 1000)
     return f"{h:02d}:{m:02d}:{s:02d},{ms:03d}"
 
 
@@ -500,7 +503,6 @@ def verify_engine(ai_engine, api_key):
 
 
 _TXT_TS_PAT = re.compile(r'^\[(\d+):(\d+)\s*-->\s*(\d+):(\d+)\]\s*(.+)$')
-_TXT_SPK_PAT = re.compile(r'^(.{1,40})：\s*$')
 
 
 def txt_to_srt(transcript_path, out_path=None):
@@ -519,7 +521,6 @@ def txt_to_srt(transcript_path, out_path=None):
         return f"{h:02d}:{m:02d}:{s:02d},000"
 
     entries = []
-    current_speaker = None
     with open(transcript_path, "r", encoding="utf-8") as f:
         for line in f:
             line = line.rstrip()
@@ -528,12 +529,9 @@ def txt_to_srt(transcript_path, out_path=None):
                 sm, ss, em, es, text = m.groups()
                 start = int(sm) * 60 + int(ss)
                 end = int(em) * 60 + int(es)
-                subtitle = text
-                entries.append((_fmt(start), _fmt(end), subtitle))
-            else:
-                spk_m = _TXT_SPK_PAT.match(line)
-                if spk_m and line.strip():
-                    current_speaker = spk_m.group(1).strip()
+                # 字幕只輸出文字，不帶說話人（說話人只在逐字稿）
+                entries.append((_fmt(start), _fmt(end), text))
+            # 說話人標頭行（xxx：）略過，不影響 SRT
 
     with open(out_path, "w", encoding="utf-8") as f:
         for i, (start, end, text) in enumerate(entries, 1):
@@ -978,7 +976,7 @@ def _plan_cuts(duration, silences, target=CHUNK_TARGET_SEC):
 
 def _cut_audio(audio_path, bounds, work_dir):
     """依 bounds 切出 16k 單聲道 wav；已存在的段沿用（支援續傳）。
-    回傳 [(chunk_path, start_offset_sec), ...]。"""
+    回傳 [(chunk_path, start_offset_sec), ...]。切檔失敗會 raise，避免後續對空檔 silently 失敗。"""
     import subprocess
     paths = []
     for i, (s, e) in enumerate(bounds):
@@ -986,7 +984,13 @@ def _cut_audio(audio_path, bounds, work_dir):
         if not os.path.exists(out):
             cmd = ["ffmpeg", "-hide_banner", "-y", "-ss", f"{s:.3f}", "-i", audio_path,
                    "-t", f"{e - s:.3f}", "-ar", "16000", "-ac", "1", out]
-            subprocess.run(cmd, capture_output=True)
+            proc = subprocess.run(cmd, capture_output=True, text=True)
+            if proc.returncode != 0 or not os.path.exists(out):
+                err = (proc.stderr or proc.stdout or "").strip().splitlines()
+                tail = err[-3:] if err else ["(no ffmpeg output)"]
+                raise RuntimeError(
+                    f"ffmpeg 切段失敗（chunk {i}，{s:.1f}–{e:.1f}s）：" + " | ".join(tail)
+                )
         paths.append((out, s))
     return paths
 
@@ -1243,10 +1247,10 @@ def _safe_open_transcript(out_path, log_q):
 
 
 def whisper_worker(audio, out_dir, model_name, lang, prompt, write_srt, result_q, log_q, prog_q, out_path_override=None):
+    # Windows ffmpeg PATH 已在模組載入時用 glob 自動尋找（勿寫死使用者路徑）
+    _saved_stdout = sys.stdout
     try:
-        import whisper, torch, os, sys, platform
-        if platform.system() == "Windows":
-            os.environ["PATH"] += ";" + r"C:\Users\kamiy\AppData\Local\Microsoft\WinGet\Packages\Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe\ffmpeg-8.1.1-full_build\bin"
+        import whisper, torch
 
         if torch.cuda.is_available():
             device, gpu_name = "cuda", torch.cuda.get_device_name(0)
@@ -1273,11 +1277,13 @@ def whisper_worker(audio, out_dir, model_name, lang, prompt, write_srt, result_q
                                  duration, result_q, log_q, prog_q)
             return
 
-        sys.stdout = _StdoutCapture(duration, prog_q)
-        result = model.transcribe(audio, language=lang, verbose=True,
-                                  initial_prompt=prompt or None,
-                                  word_timestamps=True)
-        sys.stdout = sys.__stdout__
+        try:
+            sys.stdout = _StdoutCapture(duration, prog_q)
+            result = model.transcribe(audio, language=lang, verbose=True,
+                                      initial_prompt=prompt or None,
+                                      word_timestamps=True)
+        finally:
+            sys.stdout = _saved_stdout
         prog_q.put(100)
 
         base = os.path.splitext(os.path.basename(audio))[0]
@@ -1303,17 +1309,16 @@ def whisper_worker(audio, out_dir, model_name, lang, prompt, write_srt, result_q
         result_q.put(("done", out_path))
     except Exception as e:
         try:
-            sys.stdout = sys.__stdout__
+            sys.stdout = _saved_stdout
         except Exception:
             pass
         result_q.put(("error", str(e)))
 
 
 def whisperx_worker(audio, out_dir, model_name, lang, hf_token, num_speakers, prompt, write_srt, result_q, log_q, prog_q, out_path_override=None):
+    # Windows ffmpeg PATH 已在模組載入時用 glob 自動尋找（勿寫死使用者路徑）
     try:
-        import whisperx, torch, os, platform
-        if platform.system() == "Windows":
-            os.environ["PATH"] += ";" + r"C:\Users\kamiy\AppData\Local\Microsoft\WinGet\Packages\Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe\ffmpeg-8.1.1-full_build\bin"
+        import whisperx, torch
 
         if torch.cuda.is_available():
             device, gpu_name = "cuda", torch.cuda.get_device_name(0)
@@ -1467,11 +1472,10 @@ def _ensure_whispercpp_model(size, models_dir, log_q):
 
 
 def whispercpp_worker(audio, out_dir, model_name, lang, prompt, write_srt, result_q, log_q, prog_q, out_path_override=None):
-    import subprocess, shutil, json, tempfile, platform, re as _re
+    # Windows ffmpeg PATH 已在模組載入時用 glob 自動尋找（勿寫死使用者路徑）
+    import subprocess, json, tempfile, re as _re
+    wav = out_json_base = None
     try:
-        if platform.system() == "Windows":
-            os.environ["PATH"] += ";" + r"C:\Users\kamiy\AppData\Local\Microsoft\WinGet\Packages\Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe\ffmpeg-8.1.1-full_build\bin"
-
         binary = _resolve_whispercpp_binary()
         if not binary:
             result_q.put(("error",
@@ -1483,14 +1487,17 @@ def whispercpp_worker(audio, out_dir, model_name, lang, prompt, write_srt, resul
         log_q.put(f"使用引擎：whisper.cpp（模型 {model_name}）")
         model_path = _ensure_whispercpp_model(model_name, models_dir, log_q)
 
-        # whisper.cpp 需要 16k 單聲道 wav，先用 ffmpeg 轉檔
+        # whisper.cpp 需要 16k 單聲道 wav；用唯一檔名避免多實例互相覆寫
         log_q.put(f"準備音檔：{os.path.basename(audio)}")
-        wav = os.path.join(tempfile.gettempdir(), "voxlog_wcpp_input.wav")
+        fd, wav = tempfile.mkstemp(prefix="voxlog_wcpp_", suffix=".wav")
+        os.close(fd)
         subprocess.run(["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-i", audio,
                         "-ar", "16000", "-ac", "1", wav], check=True)
 
         base = os.path.splitext(os.path.basename(audio))[0]
-        out_json_base = os.path.join(tempfile.gettempdir(), f"voxlog_wcpp_{base}")
+        # -of 會自動加 .json；檔名含 pid 避免碰撞
+        out_json_base = os.path.join(
+            tempfile.gettempdir(), f"voxlog_wcpp_{os.getpid()}_{base}")
         cmd = [binary, "-m", model_path, "-f", wav, "-oj", "-of", out_json_base, "-pp",
                "-l", lang or "auto"]
         if prompt:
@@ -1543,25 +1550,27 @@ def whispercpp_worker(audio, out_dir, model_name, lang, prompt, write_srt, resul
             log_q.put(f"字幕已輸出：{os.path.basename(srt_path)}")
 
         log_q.put("註：whisper.cpp 沒有說話人標記；可在第二步驟用 AI 校正依內容標出「哪一方」。")
-        for tmp_f in (wav, out_json_base + ".json"):
+        result_q.put(("done", out_path))
+    except Exception as e:
+        result_q.put(("error", str(e)))
+    finally:
+        for tmp_f in (wav, (out_json_base + ".json") if out_json_base else None):
+            if not tmp_f:
+                continue
             try:
                 os.remove(tmp_f)
             except OSError:
                 pass
-        result_q.put(("done", out_path))
-    except Exception as e:
-        result_q.put(("error", str(e)))
 
 
 def whispercpp_diar_worker(audio, out_dir, model_name, lang, hf_token, num_speakers, prompt, write_srt, result_q, log_q, prog_q, out_path_override=None):
     """混搭引擎：① whisper.cpp（Metal，快）負責轉錄 → ② whisperX align + pyannote 分軌
     負責說話者。接續執行（非平行），峰值負載=較重的單一階段。輸出帶 SPEAKER_xx 的稿，
     之後可在第二步用「修正說話者」改成真實角色名。進度：0–65% 轉錄、65–100% 分軌。"""
+    # Windows ffmpeg PATH 已在模組載入時用 glob 自動尋找（勿寫死使用者路徑）
     import subprocess, json, tempfile, platform, re as _re, threading
+    wav = out_json_base = None
     try:
-        if platform.system() == "Windows":
-            os.environ["PATH"] += ";" + r"C:\Users\kamiy\AppData\Local\Microsoft\WinGet\Packages\Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe\ffmpeg-8.1.1-full_build\bin"
-
         # ── 階段一：whisper.cpp 轉錄（0–30%，Metal 很快，給小比例）──
         binary = _resolve_whispercpp_binary()
         if not binary:
@@ -1574,12 +1583,14 @@ def whispercpp_diar_worker(audio, out_dir, model_name, lang, hf_token, num_speak
         model_path = _ensure_whispercpp_model(model_name, models_dir, log_q)
 
         log_q.put(f"① 準備音檔：{os.path.basename(audio)}")
-        wav = os.path.join(tempfile.gettempdir(), "voxlog_wcppdiar_input.wav")
+        fd, wav = tempfile.mkstemp(prefix="voxlog_wcppdiar_", suffix=".wav")
+        os.close(fd)
         subprocess.run(["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-i", audio,
                         "-ar", "16000", "-ac", "1", wav], check=True)
 
         base = os.path.splitext(os.path.basename(audio))[0]
-        out_json_base = os.path.join(tempfile.gettempdir(), f"voxlog_wcppdiar_{base}")
+        out_json_base = os.path.join(
+            tempfile.gettempdir(), f"voxlog_wcppdiar_{os.getpid()}_{base}")
         cmd = [binary, "-m", model_path, "-f", wav, "-oj", "-of", out_json_base, "-pp",
                "-l", lang or "auto"]
         if prompt:
@@ -1664,14 +1675,17 @@ def whispercpp_diar_worker(audio, out_dir, model_name, lang, hf_token, num_speak
         prog_q.put(100)
 
         log_q.put("分軌完成；可在第二步用「修正說話者」把 SPEAKER_xx 改成真實角色名。")
-        for tmp_f in (wav, out_json_base + ".json"):
+        result_q.put(("done", out_path))
+    except Exception as e:
+        result_q.put(("error", str(e)))
+    finally:
+        for tmp_f in (wav, (out_json_base + ".json") if out_json_base else None):
+            if not tmp_f:
+                continue
             try:
                 os.remove(tmp_f)
             except OSError:
                 pass
-        result_q.put(("done", out_path))
-    except Exception as e:
-        result_q.put(("error", str(e)))
 
 
 def _make_icon():
@@ -2036,6 +2050,7 @@ class TranscribeApp:
         self.transcript_path = None
         self.notes_thread = None
         self.ai_cancelled = False
+        self._user_stopped = False  # 手動停止時避免 poll 再報「異常結束」
         self._ai_anim_running = False
         self._ai_anim_val = 0.0
         self._ai_anim_dir = 1
@@ -2801,8 +2816,9 @@ class TranscribeApp:
             self.verify_btn.configure(fg_color=GREEN_DIM, text_color="white")
             self.log_write(f"✓ {msg}")
             self._set_status(f"✓ {msg}", GREEN)
-            if not is_local:  # 驗證通過順手存下金鑰
-                cfg_key = _ENGINE_CFG_KEY[ai_engine]
+            # 雲端存金鑰；本地引擎（Ollama / LM Studio）存模型名稱，下次啟動沿用
+            cfg_key = _ENGINE_CFG_KEY.get(ai_engine)
+            if cfg_key and (api_key or is_local):
                 save_config({cfg_key: api_key})
                 self.cfg[cfg_key] = api_key
         else:
@@ -2982,6 +2998,16 @@ class TranscribeApp:
             pass
         if self.process and self.process.is_alive():
             self.root.after(300, self.poll)
+        elif self.process is not None:
+            # 子行程結束卻沒把 done/error 放進 queue（崩潰、被系統殺、queue 毀損等）
+            # 手動停止已在 stop() 處理，這裡不要再報一次
+            if self._user_stopped:
+                self.finish()
+                return
+            elapsed = self._stop_timer()
+            self.log_write("轉錄程序異常結束（沒有回傳結果）")
+            self._set_status(f"程序異常結束（耗時 {elapsed}）", RED)
+            self.finish()
         else:
             self.finish()
 
@@ -3071,6 +3097,7 @@ class TranscribeApp:
                       self.result_q, self.log_q, self.prog_q, out_path),
                 daemon=True)
 
+        self._user_stopped = False
         self.process.start()
         self.progress.set(0)
         self.pct_var.set("0%")
@@ -3083,14 +3110,24 @@ class TranscribeApp:
 
     def stop(self):
         if self.process and self.process.is_alive():
+            self._user_stopped = True
             self.process.terminate()
-            self.process.join()
+            self.process.join(timeout=8)
+            if self.process.is_alive():
+                # terminate 無效（例如卡在原生 C 擴充）再強制 kill
+                try:
+                    self.process.kill()
+                    self.process.join(timeout=3)
+                except Exception:
+                    pass
             self.log_write("已手動停止")
             self._set_status("已停止", SUBTEXT)
             self.finish()
         else:
+            # AI 校正/摘要走 daemon thread，無法真正中斷 HTTP；只標記 UI 取消，
+            # 完成後會丟棄結果、不開檔。API 仍可能計費——這是 SDK 限制。
             self.ai_cancelled = True
-            self.log_write("正在取消，請稍候...")
+            self.log_write("正在取消（已送出的 AI 請求可能仍會跑完）...")
             self._set_status("取消中...", SUBTEXT)
 
     def finish(self):
@@ -3098,6 +3135,7 @@ class TranscribeApp:
         self.stop_btn.configure(state="disabled")
         self._stop_timer()
         self.process = None
+        self._user_stopped = False
 
     # ── Transcript helpers ─────────────────────────
     def load_transcript(self):
@@ -3166,11 +3204,15 @@ class TranscribeApp:
         return samples
 
     def _rename_speakers(self, path, name_map):
+        """把 SPEAKER_xx 換成真實名稱。
+        依標籤長度由長到短替換，避免 SPEAKER_0 先替換把 SPEAKER_00 弄成 Alice0。"""
         with open(path, "r", encoding="utf-8") as f:
             content = f.read()
-        for original, new_name in name_map.items():
-            if original != new_name:
-                content = content.replace(original, new_name)
+        # 長 ID 優先（SPEAKER_00 在 SPEAKER_0 之前），且只動整段標籤
+        items = [(o, n) for o, n in name_map.items() if o and n and o != n]
+        items.sort(key=lambda x: len(x[0]), reverse=True)
+        for original, new_name in items:
+            content = content.replace(original, new_name)
         with open(path, "w", encoding="utf-8") as f:
             f.write(content)
 
